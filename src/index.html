@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1012">
+<meta name="description" content="Measure the volume and tonnage of a stockpile by walking around it with your phone.">
+<title>Photoscale — pile volume with your phone</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1012'/%3E%3Cpath d='M6 50 L26 18 Q32 10 38 18 L58 50 Z' fill='%23ffc61a'/%3E%3Ccircle cx='24' cy='38' r='3' fill='%230e1012'/%3E%3Ccircle cx='34' cy='30' r='3' fill='%230e1012'/%3E%3Ccircle cx='42' cy='42' r='3' fill='%230e1012'/%3E%3C/svg%3E">
+<style>/*INLINE:style.css*/</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button class="brand" id="go-home" aria-label="Home">
+      <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><path d="M4 52 L25 17 Q32 7 39 17 L60 52 Z" fill="var(--acc)"/><circle cx="24" cy="39" r="3.2" fill="#0e1012"/><circle cx="34" cy="29" r="3.2" fill="#0e1012"/><circle cx="43" cy="42" r="3.2" fill="#0e1012"/></svg>
+      <span>Photoscale</span>
+    </button>
+    <nav class="topnav">
+      <button class="navbtn" data-go="history">History <b id="hist-count"></b></button>
+      <button class="navbtn" data-go="guide">Guide</button>
+      <button class="navbtn icon" data-go="settings" aria-label="Settings">⚙</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- HOME -->
+    <section id="scr-home" class="screen active">
+      <div class="hero">
+        <h1>Walk around a pile.<br><span>Get m³ and tonnes.</span></h1>
+        <p class="lede">Your phone tracks the pile in 3D while you walk one loop around it. Everything is calculated on the phone.</p>
+      </div>
+      <div class="card">
+        <label class="field"><span>Pile name</span><input id="in-name" type="text" maxlength="60" autocomplete="off"></label>
+        <div class="row2">
+          <label class="field grow"><span>Material</span><select id="in-mat"></select></label>
+          <label class="field den"><span>Density t/m³</span><input id="in-den" type="number" inputmode="decimal" step="0.01" min="0.05" max="5"></label>
+        </div>
+        <button id="btn-ar" class="btn primary big">Start AR measurement</button>
+        <div id="ar-status" class="status">Checking AR support…</div>
+      </div>
+      <div class="grid2">
+        <button id="btn-demo" class="tile">
+          <b>Try the demo</b><span>Simulated gravel pile with a known volume — see the whole flow on any device.</span>
+        </button>
+        <button class="tile" data-go="guide">
+          <b>How to measure</b><span>Walking route, distances, the tape check and what affects accuracy.</span>
+        </button>
+      </div>
+      <p class="fine">Needs Chrome on an Android phone with Google Play Services for AR (ARCore). Measurements and history stay on this phone.</p>
+    </section>
+
+    <!-- RESULT -->
+    <section id="scr-result" class="screen">
+      <div class="res-head">
+        <div><h2 id="res-title">Pile</h2><div id="res-sub" class="muted"></div></div>
+        <div id="res-quality" class="qbadge"></div>
+      </div>
+      <div class="bignums">
+        <div class="bign"><div class="lbl">Volume</div><div class="val"><span id="res-vol">–</span><small>m³</small></div><div id="res-vol-range" class="rng"></div></div>
+        <div class="bign acc"><div class="lbl">Tonnage</div><div class="val"><span id="res-ton">–</span><small>t</small></div><div class="rng"><button id="res-den" class="chip"></button></div></div>
+      </div>
+      <div id="res-truth" class="truth hidden"></div>
+      <div class="card flush">
+        <canvas id="res-3d" class="view3d"></canvas>
+        <div class="vbar">
+          <button class="seg on" id="v-3d">3D</button><button class="seg" id="v-top">Top</button><button class="seg" id="v-pts">Points</button>
+          <span class="muted small">drag · pinch · double-tap</span>
+        </div>
+      </div>
+      <div id="res-stats" class="stats"></div>
+      <ul id="res-warn" class="warns"></ul>
+
+      <div id="res-tape" class="card hidden">
+        <h3>Tape check</h3>
+        <p class="muted">You marked two points in AR. The phone measured them <b id="tape-ar"></b> apart. Enter the distance you measured with a tape to correct the phone's scale.</p>
+        <div class="row2"><label class="field grow"><span>Taped distance (m)</span><input id="tape-in" type="number" inputmode="decimal" step="0.001" min="0.5"></label><button id="tape-apply" class="btn">Apply</button></div>
+        <div id="tape-out" class="muted"></div>
+      </div>
+
+      <details class="card">
+        <summary><b>Calibrate density</b> <span class="muted">— know the real weight of this pile?</span></summary>
+        <p class="muted">If this pile was weighed (e.g. on a weighbridge), enter its tonnage. Photoscale divides it by the measured volume and can save the result as your own material.</p>
+        <div class="row2"><label class="field grow"><span>Known tonnage (t)</span><input id="cal-in" type="number" inputmode="decimal" step="0.1" min="0"></label><button id="cal-go" class="btn">Calculate</button></div>
+        <div id="cal-out" class="muted"></div>
+      </details>
+
+      <details class="card" id="res-why">
+        <summary><b>How sure is this number?</b></summary>
+        <div id="why-body"></div>
+      </details>
+
+      <div class="actions">
+        <button id="res-save" class="btn primary">Save to history</button>
+        <button id="res-share" class="btn">Share summary</button>
+        <button id="res-json" class="btn">Export data (JSON)</button>
+        <button id="res-raw" class="btn hidden">Download raw data</button>
+        <button id="res-new" class="btn ghost">New measurement</button>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="scr-history" class="screen">
+      <div class="res-head"><h2>History</h2><button id="hist-csv" class="btn small">Export CSV</button></div>
+      <div id="hist-list" class="hlist"></div>
+      <p id="hist-empty" class="muted center hidden">No saved measurements yet.</p>
+    </section>
+
+    <!-- GUIDE -->
+    <section id="scr-guide" class="screen">
+      <h2>How to measure a pile</h2>
+      <ol class="steps">
+        <li><b>Prepare.</b> Use Chrome on your Android phone, in daylight or good lighting. The pile must stand free so you can walk all the way round it. Keep people and machines away from it while you walk.</li>
+        <li><b>Optional, for the best accuracy: the tape check.</b> Put two markers on flat ground near the pile — cones, spray-painted crosses or two sheets of paper — about 5–10 m apart, and measure the distance between their centres with a tape.</li>
+        <li><b>Start.</b> Choose the material, tap <i>Start AR measurement</i> and allow the camera. Move the phone gently left and right until the dots appear. Aim the centre dot at the middle of the pile and tap <b>START</b>. A yellow flag marks where you started.</li>
+        <li><b>Walk one loop.</b> Hold the phone upright at chest height and keep it pointed at the pile. Stay about 2–5 m from the foot of the pile (closer for small piles). Keep the whole height of the pile and a strip of ground in view. Walk slowly — about half your normal speed.</li>
+        <li><b>Watch the dots.</b> <span class="dot r"></span> red = new detail, <span class="dot b"></span> blue = position being worked out, <span class="dot g"></span> green = fixed in 3D. The map at the top right fills in as the surface is measured; the ring shows how far round you are.</li>
+        <li><b>Close the loop.</b> When the ring is almost full the app asks you to slow down and points to the flag. Walk a few steps past it until you see <b>Loop closed ✓</b>, then tap <b>FINISH</b>.</li>
+        <li><b>Tape check.</b> During the walk, aim the centre dot at marker A and tap <i>Mark A</i>, then at marker B and tap <i>Mark B</i>. On the result page enter your taped distance.</li>
+      </ol>
+      <div class="card">
+        <h3>Tonnage and density</h3>
+        <p class="muted">Tonnage = volume × bulk density. The built-in densities are typical values only. Coal, ash and aggregates change with moisture and compaction, so calibrate once: measure a pile whose weight you know from the weighbridge, then use <i>Calibrate density</i> on the result page and save it as your own material.</p>
+      </div>
+      <div class="card">
+        <h3>What affects accuracy</h3>
+        <ul class="plain">
+          <li><b>The phone's sense of distance.</b> It can be off by 1–2%. Volume grows with length × width × height, so this becomes roughly 3–6% in volume. The tape check removes most of it.</li>
+          <li><b>Parts you did not see.</b> The top of a tall pile, or a side you skipped, is filled in by estimation. Close the loop and keep the whole pile in view.</li>
+          <li><b>The ground under the pile.</b> Photoscale assumes the ground under the pile continues at the level of the ground around it. A pile on a slope or in a pit is less certain.</li>
+          <li><b>Light and texture.</b> Dark coal in poor light gives fewer dots. Daylight works best. Avoid rain, snow on the pile, and dust clouds.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="scr-settings" class="screen">
+      <h2>Settings</h2>
+      <div class="card">
+        <label class="toggle"><input type="checkbox" id="set-record"><span><b>Save raw data with each measurement</b><br><small class="muted">Camera frames, depth and phone motion (about 20–60 MB per walk) — for re-processing on a computer or troubleshooting.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-debug"><span><b>Show technical info during capture</b><br><small class="muted">Tracked points, depth frames and processing time.</small></span></label>
+        <label class="field"><span>Demo speed</span><select id="set-speed"><option value="1">1× (real time)</option><option value="2">2×</option><option value="4">4×</option></select></label>
+      </div>
+      <div class="card">
+        <h3>My materials</h3>
+        <div id="set-mats" class="mats"></div>
+        <div class="row2"><label class="field grow"><span>Name</span><input id="mat-name" type="text" maxlength="40"></label><label class="field den"><span>t/m³</span><input id="mat-den" type="number" inputmode="decimal" step="0.01"></label><button id="mat-add" class="btn">Add</button></div>
+      </div>
+      <div class="card">
+        <h3>About</h3>
+        <p class="muted">Photoscale <span id="ver"></span>. It uses the phone's AR motion tracking (ARCore) for real-world scale, follows details in the camera image to place 3D points, adds ARCore depth, and builds a height map of the pile. The volume is the space between that surface and the ground level found around the pile. Nothing is uploaded.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="sim-stage" class="sim-stage hidden"><canvas id="sim-canvas"></canvas></div>
+
+<div id="ov" class="ov hidden">
+  <div class="ov-top">
+    <button id="ov-close" class="ov-icon" aria-label="Cancel">✕</button>
+    <div id="ov-msg" class="ov-msg info">Starting…</div>
+  </div>
+  <canvas id="ov-mini" class="ov-mini" width="256" height="256"></canvas>
+  <div class="ov-reticle"></div>
+  <div id="ov-arrow" class="ov-arrow hidden">➜</div>
+  <div class="ov-bottom">
+    <div class="ov-ringwrap"><canvas id="ov-ring" width="240" height="240"></canvas><div id="ov-pct" class="ov-pct">0%</div></div>
+    <div class="ov-btns">
+      <button id="ov-ref" class="ov-small hidden">Mark A</button>
+      <button id="ov-main" class="ov-main" disabled>START</button>
+    </div>
+  </div>
+  <div id="ov-stats" class="ov-stats hidden"></div>
+</div>
+
+<div id="busy" class="busy hidden"><div class="spinner"></div><div id="busy-msg">Working…</div></div>
+<div id="toast" class="toast hidden"></div>
+
+<script id="engine-src" type="text/plain">/*INLINE:engine.js*/</script>
+<script>
+/*INLINE:gl.js*/
+/*INLINE:sim.js*/
+/*INLINE:capture.js*/
+/*INLINE:xr.js*/
+/*INLINE:viewer.js*/
+/*INLINE:record.js*/
+/*INLINE:app.js*/
+</script>
+</body>
+</html>

@@ -1,0 +1,3012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1012">
+<meta name="description" content="Measure the volume and tonnage of a stockpile by walking around it with your phone.">
+<title>Photoscale — pile volume with your phone</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1012'/%3E%3Cpath d='M6 50 L26 18 Q32 10 38 18 L58 50 Z' fill='%23ffc61a'/%3E%3Ccircle cx='24' cy='38' r='3' fill='%230e1012'/%3E%3Ccircle cx='34' cy='30' r='3' fill='%230e1012'/%3E%3Ccircle cx='42' cy='42' r='3' fill='%230e1012'/%3E%3C/svg%3E">
+<style>:root{
+  --bg:#0e1012; --s1:#16191d; --s2:#1d2126; --line:#2a3037; --tx:#eef1f4; --mu:#97a1ac;
+  --acc:#ffc61a; --acc-ink:#1b1500; --ok:#3ddc84; --warn:#ffb020; --bad:#ff5d5d; --info:#5ab0ff;
+  --r:14px; --pad:16px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);-webkit-text-size-adjust:100%}
+body{min-height:100vh;line-height:1.45;font-size:16px}
+button,input,select{font:inherit;color:inherit}
+.hidden{display:none!important}
+#app{max-width:600px;margin:0 auto;padding:0 var(--pad) calc(28px + env(safe-area-inset-bottom))}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top)) 0 8px;position:sticky;top:0;background:linear-gradient(var(--bg) 70%,transparent);z-index:5}
+.brand{display:flex;align-items:center;gap:9px;background:none;border:0;padding:4px 0;font-weight:800;font-size:19px;letter-spacing:.2px;cursor:pointer}
+.topnav{display:flex;gap:6px}
+.navbtn{background:var(--s1);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer}
+.navbtn.icon{padding:6px 11px}
+.navbtn b{color:var(--acc);font-weight:700}
+.screen{display:none;animation:fade .18s ease-out}
+.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+h1{font-size:30px;line-height:1.12;margin:18px 0 8px;letter-spacing:-.3px}
+h1 span{color:var(--acc)}
+h2{font-size:22px;margin:14px 0 10px}
+h3{font-size:17px;margin:2px 0 8px}
+.lede{color:var(--mu);margin:0 0 16px}
+.muted{color:var(--mu)}
+.small{font-size:13px}
+.fine{color:var(--mu);font-size:13px;margin:16px 2px}
+.center{text-align:center}
+.card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:var(--pad);margin:12px 0}
+.card.flush{padding:0;overflow:hidden}
+details.card summary{cursor:pointer;list-style:none}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary::before{content:'▸ ';color:var(--acc)}
+details.card[open] summary::before{content:'▾ '}
+.field{display:flex;flex-direction:column;gap:5px;margin:0 0 12px}
+.field span{font-size:13px;color:var(--mu)}
+.field input,.field select{background:var(--s2);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:48px;width:100%;outline:none}
+.field input:focus,.field select:focus{border-color:var(--acc)}
+.row2{display:flex;gap:10px;align-items:flex-end}
+.grow{flex:1;min-width:0}
+.den{width:112px;flex:none}
+.row2 .btn{margin-bottom:12px}
+.btn{background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-height:48px;font-weight:650;cursor:pointer}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.btn.ghost{background:transparent}
+.btn.big{width:100%;min-height:58px;font-size:18px;border-radius:14px}
+.btn.small{min-height:36px;padding:6px 12px;font-size:14px}
+.btn:disabled{opacity:.45}
+.status{margin-top:10px;font-size:14px;color:var(--mu)}
+.status.ok{color:var(--ok)} .status.bad{color:var(--warn)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{text-align:left;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.tile b{font-size:16px} .tile span{color:var(--mu);font-size:13px}
+.res-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
+.res-head h2{margin:6px 0 2px}
+.qbadge{font-size:13px;font-weight:700;border-radius:999px;padding:6px 11px;white-space:nowrap}
+.qbadge.good{background:rgba(61,220,132,.14);color:var(--ok)}
+.qbadge.fair{background:rgba(255,176,32,.14);color:var(--warn)}
+.qbadge.poor{background:rgba(255,93,93,.14);color:var(--bad)}
+.bignums{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.bign{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.bign.acc{border-color:rgba(255,198,26,.5);background:linear-gradient(160deg,rgba(255,198,26,.12),var(--s1) 60%)}
+.bign .lbl{color:var(--mu);font-size:13px;text-transform:uppercase;letter-spacing:.6px}
+.bign .val{font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px;line-height:1.1;margin:4px 0}
+.bign .val small{font-size:17px;font-weight:600;color:var(--mu);margin-left:4px}
+.bign .rng{font-size:13px;color:var(--mu);font-variant-numeric:tabular-nums}
+.chip{background:var(--s2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;color:var(--tx)}
+.truth{background:rgba(90,176,255,.10);border:1px solid rgba(90,176,255,.35);color:#cfe6ff;border-radius:12px;padding:10px 12px;font-size:14px}
+.view3d{display:block;width:100%;height:320px;touch-action:none;background:#13161a}
+.vbar{display:flex;gap:6px;align-items:center;padding:8px;border-top:1px solid var(--line)}
+.vbar .muted{margin-left:auto}
+.seg{background:var(--s2);border:1px solid var(--line);border-radius:9px;padding:6px 12px;font-size:14px;cursor:pointer}
+.seg.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.stat{background:var(--s1);border:1px solid var(--line);border-radius:12px;padding:10px}
+.stat b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--mu)}
+.warns{list-style:none;padding:0;margin:8px 0}
+.warns li{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.3);border-radius:10px;padding:9px 11px;margin:6px 0;font-size:14px}
+.warns li.ok{background:rgba(61,220,132,.08);border-color:rgba(61,220,132,.3)}
+.warns li.tip{background:rgba(90,176,255,.07);border-color:rgba(90,176,255,.3)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.actions .primary{grid-column:1/-1}
+.why-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.why-row b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.steps{padding-left:22px} .steps li{margin:0 0 12px}
+.plain{padding-left:18px;margin:0} .plain li{margin:0 0 8px;color:var(--mu)} .plain b{color:var(--tx)}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #111;vertical-align:-1px}
+.dot.r{background:#ff2e40} .dot.b{background:#268cff} .dot.g{background:#40f25a}
+.toggle{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;cursor:pointer}
+.toggle input{width:22px;height:22px;margin-top:2px;accent-color:var(--acc);flex:none}
+.mats{margin-bottom:8px}
+.mat{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.mat button{background:none;border:0;color:var(--bad);cursor:pointer;font-size:14px}
+.hlist{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.hitem{display:flex;gap:12px;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:10px;cursor:pointer;text-align:left;align-items:center}
+.hitem img{width:84px;height:58px;object-fit:cover;border-radius:8px;background:#222;flex:none}
+.hitem .hx{flex:1;min-width:0}
+.hitem .hx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hitem .hx span{font-size:13px;color:var(--mu)}
+.hitem .hv{text-align:right;font-variant-numeric:tabular-nums}
+.hitem .hv b{display:block;font-size:17px}
+.hitem .del{background:none;border:0;color:var(--mu);font-size:18px;padding:4px 6px;cursor:pointer}
+.busy{position:fixed;inset:0;background:rgba(8,9,10,.82);display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;z-index:60;font-weight:600}
+.spinner{width:44px;height:44px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:var(--acc);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#22272d;border:1px solid var(--line);border-radius:12px;padding:11px 14px;z-index:70;max-width:min(92vw,560px);font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.toast.bad{border-color:var(--bad)} .toast.ok{border-color:var(--ok)}
+
+/* ---------- capture overlay (AR and demo) ---------- */
+.sim-stage{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:30}
+.sim-stage canvas{display:block}
+.ov{position:fixed;inset:0;z-index:40;pointer-events:none;color:#fff;font-size:15px}
+.ov button{pointer-events:auto}
+.ov-top{position:absolute;top:calc(10px + env(safe-area-inset-top));left:10px;right:10px;display:flex;gap:10px;align-items:flex-start}
+.ov-icon{width:44px;height:44px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:18px;flex:none}
+.ov-msg{flex:1;margin-right:128px;padding:10px 14px;border-radius:14px;font-weight:700;font-size:16px;line-height:1.3;background:rgba(10,12,14,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.ov-msg.go{background:rgba(255,198,26,.92);color:#1b1500;text-shadow:none}
+.ov-msg.warn{background:rgba(220,50,50,.88)}
+.ov-msg.slow{background:rgba(255,150,0,.92);color:#1b1100;text-shadow:none}
+.ov-msg.ok{background:rgba(40,190,105,.92)}
+.ov-mini{position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;width:118px;height:118px;border-radius:12px;border:1px solid rgba(255,255,255,.25)}
+.ov-reticle{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.ov-reticle::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;background:#fff;border-radius:50%}
+.ov-arrow{position:absolute;left:50%;top:38%;font-size:76px;color:#ffb000;text-shadow:0 2px 8px rgba(0,0,0,.6);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+.ov-bottom{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;justify-content:space-between}
+.ov-ringwrap{position:relative;width:104px;height:104px;background:rgba(10,12,14,.55);border-radius:50%}
+.ov-ringwrap canvas{width:104px;height:104px}
+.ov-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;font-variant-numeric:tabular-nums}
+.ov-btns{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.ov-main{min-width:150px;height:64px;border-radius:999px;border:0;background:rgba(255,255,255,.92);color:#111;font-weight:800;font-size:20px;letter-spacing:.5px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.ov-main.go{background:var(--acc)}
+.ov-main.warn{background:#ff7a1a;color:#1b0b00}
+.ov-main:disabled{opacity:.5}
+.ov-small{height:42px;padding:0 16px;border-radius:999px;border:0;background:rgba(10,12,14,.72);color:#fff;font-weight:700}
+.ov-stats{position:absolute;left:10px;right:10px;bottom:calc(126px + env(safe-area-inset-bottom));font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:8px}
+@media (min-width:700px){ h1{font-size:36px} .view3d{height:380px} }
+@media (max-width:360px){ .bign .val{font-size:30px} .stats{grid-template-columns:1fr 1fr} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button class="brand" id="go-home" aria-label="Home">
+      <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><path d="M4 52 L25 17 Q32 7 39 17 L60 52 Z" fill="var(--acc)"/><circle cx="24" cy="39" r="3.2" fill="#0e1012"/><circle cx="34" cy="29" r="3.2" fill="#0e1012"/><circle cx="43" cy="42" r="3.2" fill="#0e1012"/></svg>
+      <span>Photoscale</span>
+    </button>
+    <nav class="topnav">
+      <button class="navbtn" data-go="history">History <b id="hist-count"></b></button>
+      <button class="navbtn" data-go="guide">Guide</button>
+      <button class="navbtn icon" data-go="settings" aria-label="Settings">⚙</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- HOME -->
+    <section id="scr-home" class="screen active">
+      <div class="hero">
+        <h1>Walk around a pile.<br><span>Get m³ and tonnes.</span></h1>
+        <p class="lede">Your phone tracks the pile in 3D while you walk one loop around it. Everything is calculated on the phone.</p>
+      </div>
+      <div class="card">
+        <label class="field"><span>Pile name</span><input id="in-name" type="text" maxlength="60" autocomplete="off"></label>
+        <div class="row2">
+          <label class="field grow"><span>Material</span><select id="in-mat"></select></label>
+          <label class="field den"><span>Density t/m³</span><input id="in-den" type="number" inputmode="decimal" step="0.01" min="0.05" max="5"></label>
+        </div>
+        <button id="btn-ar" class="btn primary big">Start AR measurement</button>
+        <div id="ar-status" class="status">Checking AR support…</div>
+      </div>
+      <div class="grid2">
+        <button id="btn-demo" class="tile">
+          <b>Try the demo</b><span>Simulated gravel pile with a known volume — see the whole flow on any device.</span>
+        </button>
+        <button class="tile" data-go="guide">
+          <b>How to measure</b><span>Walking route, distances, the tape check and what affects accuracy.</span>
+        </button>
+      </div>
+      <p class="fine">Needs Chrome on an Android phone with Google Play Services for AR (ARCore). Measurements and history stay on this phone.</p>
+    </section>
+
+    <!-- RESULT -->
+    <section id="scr-result" class="screen">
+      <div class="res-head">
+        <div><h2 id="res-title">Pile</h2><div id="res-sub" class="muted"></div></div>
+        <div id="res-quality" class="qbadge"></div>
+      </div>
+      <div class="bignums">
+        <div class="bign"><div class="lbl">Volume</div><div class="val"><span id="res-vol">–</span><small>m³</small></div><div id="res-vol-range" class="rng"></div></div>
+        <div class="bign acc"><div class="lbl">Tonnage</div><div class="val"><span id="res-ton">–</span><small>t</small></div><div class="rng"><button id="res-den" class="chip"></button></div></div>
+      </div>
+      <div id="res-truth" class="truth hidden"></div>
+      <div class="card flush">
+        <canvas id="res-3d" class="view3d"></canvas>
+        <div class="vbar">
+          <button class="seg on" id="v-3d">3D</button><button class="seg" id="v-top">Top</button><button class="seg" id="v-pts">Points</button>
+          <span class="muted small">drag · pinch · double-tap</span>
+        </div>
+      </div>
+      <div id="res-stats" class="stats"></div>
+      <ul id="res-warn" class="warns"></ul>
+
+      <div id="res-tape" class="card hidden">
+        <h3>Tape check</h3>
+        <p class="muted">You marked two points in AR. The phone measured them <b id="tape-ar"></b> apart. Enter the distance you measured with a tape to correct the phone's scale.</p>
+        <div class="row2"><label class="field grow"><span>Taped distance (m)</span><input id="tape-in" type="number" inputmode="decimal" step="0.001" min="0.5"></label><button id="tape-apply" class="btn">Apply</button></div>
+        <div id="tape-out" class="muted"></div>
+      </div>
+
+      <details class="card">
+        <summary><b>Calibrate density</b> <span class="muted">— know the real weight of this pile?</span></summary>
+        <p class="muted">If this pile was weighed (e.g. on a weighbridge), enter its tonnage. Photoscale divides it by the measured volume and can save the result as your own material.</p>
+        <div class="row2"><label class="field grow"><span>Known tonnage (t)</span><input id="cal-in" type="number" inputmode="decimal" step="0.1" min="0"></label><button id="cal-go" class="btn">Calculate</button></div>
+        <div id="cal-out" class="muted"></div>
+      </details>
+
+      <details class="card" id="res-why">
+        <summary><b>How sure is this number?</b></summary>
+        <div id="why-body"></div>
+      </details>
+
+      <div class="actions">
+        <button id="res-save" class="btn primary">Save to history</button>
+        <button id="res-share" class="btn">Share summary</button>
+        <button id="res-json" class="btn">Export data (JSON)</button>
+        <button id="res-raw" class="btn hidden">Download raw data</button>
+        <button id="res-new" class="btn ghost">New measurement</button>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="scr-history" class="screen">
+      <div class="res-head"><h2>History</h2><button id="hist-csv" class="btn small">Export CSV</button></div>
+      <div id="hist-list" class="hlist"></div>
+      <p id="hist-empty" class="muted center hidden">No saved measurements yet.</p>
+    </section>
+
+    <!-- GUIDE -->
+    <section id="scr-guide" class="screen">
+      <h2>How to measure a pile</h2>
+      <ol class="steps">
+        <li><b>Prepare.</b> Use Chrome on your Android phone, in daylight or good lighting. The pile must stand free so you can walk all the way round it. Keep people and machines away from it while you walk.</li>
+        <li><b>Optional, for the best accuracy: the tape check.</b> Put two markers on flat ground near the pile — cones, spray-painted crosses or two sheets of paper — about 5–10 m apart, and measure the distance between their centres with a tape.</li>
+        <li><b>Start.</b> Choose the material, tap <i>Start AR measurement</i> and allow the camera. Move the phone gently left and right until the dots appear. Aim the centre dot at the middle of the pile and tap <b>START</b>. A yellow flag marks where you started.</li>
+        <li><b>Walk one loop.</b> Hold the phone upright at chest height and keep it pointed at the pile. Stay about 2–5 m from the foot of the pile (closer for small piles). Keep the whole height of the pile and a strip of ground in view. Walk slowly — about half your normal speed.</li>
+        <li><b>Watch the dots.</b> <span class="dot r"></span> red = new detail, <span class="dot b"></span> blue = position being worked out, <span class="dot g"></span> green = fixed in 3D. The map at the top right fills in as the surface is measured; the ring shows how far round you are.</li>
+        <li><b>Close the loop.</b> When the ring is almost full the app asks you to slow down and points to the flag. Walk a few steps past it until you see <b>Loop closed ✓</b>, then tap <b>FINISH</b>.</li>
+        <li><b>Tape check.</b> During the walk, aim the centre dot at marker A and tap <i>Mark A</i>, then at marker B and tap <i>Mark B</i>. On the result page enter your taped distance.</li>
+      </ol>
+      <div class="card">
+        <h3>Tonnage and density</h3>
+        <p class="muted">Tonnage = volume × bulk density. The built-in densities are typical values only. Coal, ash and aggregates change with moisture and compaction, so calibrate once: measure a pile whose weight you know from the weighbridge, then use <i>Calibrate density</i> on the result page and save it as your own material.</p>
+      </div>
+      <div class="card">
+        <h3>What affects accuracy</h3>
+        <ul class="plain">
+          <li><b>The phone's sense of distance.</b> It can be off by 1–2%. Volume grows with length × width × height, so this becomes roughly 3–6% in volume. The tape check removes most of it.</li>
+          <li><b>Parts you did not see.</b> The top of a tall pile, or a side you skipped, is filled in by estimation. Close the loop and keep the whole pile in view.</li>
+          <li><b>The ground under the pile.</b> Photoscale assumes the ground under the pile continues at the level of the ground around it. A pile on a slope or in a pit is less certain.</li>
+          <li><b>Light and texture.</b> Dark coal in poor light gives fewer dots. Daylight works best. Avoid rain, snow on the pile, and dust clouds.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="scr-settings" class="screen">
+      <h2>Settings</h2>
+      <div class="card">
+        <label class="toggle"><input type="checkbox" id="set-record"><span><b>Save raw data with each measurement</b><br><small class="muted">Camera frames, depth and phone motion (about 20–60 MB per walk) — for re-processing on a computer or troubleshooting.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-debug"><span><b>Show technical info during capture</b><br><small class="muted">Tracked points, depth frames and processing time.</small></span></label>
+        <label class="field"><span>Demo speed</span><select id="set-speed"><option value="1">1× (real time)</option><option value="2">2×</option><option value="4">4×</option></select></label>
+      </div>
+      <div class="card">
+        <h3>My materials</h3>
+        <div id="set-mats" class="mats"></div>
+        <div class="row2"><label class="field grow"><span>Name</span><input id="mat-name" type="text" maxlength="40"></label><label class="field den"><span>t/m³</span><input id="mat-den" type="number" inputmode="decimal" step="0.01"></label><button id="mat-add" class="btn">Add</button></div>
+      </div>
+      <div class="card">
+        <h3>About</h3>
+        <p class="muted">Photoscale <span id="ver"></span>. It uses the phone's AR motion tracking (ARCore) for real-world scale, follows details in the camera image to place 3D points, adds ARCore depth, and builds a height map of the pile. The volume is the space between that surface and the ground level found around the pile. Nothing is uploaded.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="sim-stage" class="sim-stage hidden"><canvas id="sim-canvas"></canvas></div>
+
+<div id="ov" class="ov hidden">
+  <div class="ov-top">
+    <button id="ov-close" class="ov-icon" aria-label="Cancel">✕</button>
+    <div id="ov-msg" class="ov-msg info">Starting…</div>
+  </div>
+  <canvas id="ov-mini" class="ov-mini" width="256" height="256"></canvas>
+  <div class="ov-reticle"></div>
+  <div id="ov-arrow" class="ov-arrow hidden">➜</div>
+  <div class="ov-bottom">
+    <div class="ov-ringwrap"><canvas id="ov-ring" width="240" height="240"></canvas><div id="ov-pct" class="ov-pct">0%</div></div>
+    <div class="ov-btns">
+      <button id="ov-ref" class="ov-small hidden">Mark A</button>
+      <button id="ov-main" class="ov-main" disabled>START</button>
+    </div>
+  </div>
+  <div id="ov-stats" class="ov-stats hidden"></div>
+</div>
+
+<div id="busy" class="busy hidden"><div class="spinner"></div><div id="busy-msg">Working…</div></div>
+<div id="toast" class="toast hidden"></div>
+
+<script id="engine-src" type="text/plain">/* Photoscale measurement engine.
+   Runs inside a Web Worker (also loadable in Node for tests).
+   Input per frame: camera pose (from ARCore via WebXR, metric, y = up),
+   a small grayscale camera image and/or a depth sample grid.
+   Output: tracked feature dots (red/blue/green), a fused 2.5D height grid,
+   and at the end the pile volume with an error estimate. */
+'use strict';
+var PSE = (function () {
+
+const DEG = Math.PI / 180;
+const now = (typeof performance !== 'undefined') ? () => performance.now() : () => Date.now();
+
+const CFG = {
+  levels: 3, win: 4, lkIters: 10, minEig: 6, fbThr: 0.9, resThr: 32,
+  fastThr: 14, cellPx: 16, maxTracks: 420,
+  obsMinMove: 0.05, maxObs: 12, maxTrackSpan: 15,
+  triMinParDeg: 0.8, greenParDeg: 3.0, greenSigma: 0.05, commitSigma: 0.15, maxResPx: 2.5,
+  pxSigma: 0.7,
+  cellSize: 0.10, gridN: 640, kF: 3.0, minCellW: 0.25,
+  depthMin: 0.7, depthMax: 7.5, depthEdge: 0.06, depthW: 0.25,
+  flipEvalEvery: 6,
+  miniEveryMs: 350,
+};
+
+/* ------------------------------------------------------------------ */
+/* state                                                               */
+/* ------------------------------------------------------------------ */
+let W = 0, H = 0, pyrA = null, pyrB = null, hasPrev = false, prevGrayFi = -1;
+let tracks = [], nextId = 1, medFX = 0, medFY = 0, fastThr = CFG.fastThr;
+let fr = { R: [], C: [], I: [], t: [] };
+let grid = null, started = false, tStart = 0, center = null;
+let groundHits = [];
+let pts = new Float32Array(4 * 8192), nPts = 0, newPts = [];
+let flipMode = 1, flipLocked = false, flipStats = null, flipCount = 0;
+let nDepthFrames = 0, nDepthSamples = 0;
+let camPath = [];
+let lastProgress = 0, lastMiniT = -1e9, procTimes = [], lostCount = 0;
+let occ = null, best = null, bx = null, by = null;
+
+function reset(cfg) {
+  if (cfg) for (const k in cfg) if (k in CFG) CFG[k] = cfg[k];
+  W = 0; H = 0; pyrA = pyrB = null; hasPrev = false; prevGrayFi = -1;
+  tracks = []; nextId = 1; medFX = medFY = 0; fastThr = CFG.fastThr;
+  fr = { R: [], C: [], I: [], t: [] };
+  grid = null; started = false; tStart = 0; center = null; groundHits = [];
+  pts = new Float32Array(4 * 8192); nPts = 0; newPts = [];
+  flipMode = (cfg && cfg.flipMode !== undefined) ? cfg.flipMode : 1;
+  flipLocked = !!(cfg && cfg.flipLocked); flipStats = null; flipCount = 0;
+  nDepthFrames = 0; nDepthSamples = 0; camPath = []; lastProgress = 0; lastMiniT = -1e9;
+  procTimes = []; lostCount = 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* image pyramid                                                       */
+/* ------------------------------------------------------------------ */
+function makePyr(w, h, n) {
+  const L = [];
+  for (let i = 0; i < n; i++) {
+    L.push({ w, h, img: new Float32Array(w * h), gx: new Float32Array(w * h), gy: new Float32Array(w * h) });
+    w = w >> 1; h = h >> 1;
+  }
+  return L;
+}
+function buildPyr(P, gray) {
+  const a0 = P[0].img, n = P[0].w * P[0].h;
+  for (let i = 0; i < n; i++) a0[i] = gray[i];
+  for (let l = 1; l < P.length; l++) {
+    const a = P[l - 1], b = P[l], aw = a.w, bw = b.w, bh = b.h, ai = a.img, bi = b.img;
+    for (let y = 0; y < bh; y++) {
+      const r0 = 2 * y * aw, r1 = r0 + aw;
+      for (let x = 0; x < bw; x++) {
+        const o = 2 * x;
+        bi[y * bw + x] = 0.25 * (ai[r0 + o] + ai[r0 + o + 1] + ai[r1 + o] + ai[r1 + o + 1]);
+      }
+    }
+  }
+  for (const lv of P) scharr(lv);
+}
+function scharr(lv) {
+  const w = lv.w, h = lv.h, I = lv.img, gx = lv.gx, gy = lv.gy;
+  gx.fill(0); gy.fill(0);
+  for (let y = 1; y < h - 1; y++) {
+    let o = y * w + 1;
+    for (let x = 1; x < w - 1; x++, o++) {
+      const a = I[o - w - 1], b = I[o - w], c = I[o - w + 1], d = I[o - 1], f = I[o + 1],
+        g = I[o + w - 1], hh = I[o + w], k = I[o + w + 1];
+      gx[o] = (3 * (c - a) + 10 * (f - d) + 3 * (k - g)) * 0.03125;
+      gy[o] = (3 * (g - a) + 10 * (hh - b) + 3 * (k - c)) * 0.03125;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* pyramidal Lucas-Kanade                                              */
+/* ------------------------------------------------------------------ */
+const WN = (2 * CFG.win + 1) * (2 * CFG.win + 1);
+const TT = new Float32Array(WN), TX = new Float32Array(WN), TY = new Float32Array(WN);
+const LK = { x: 0, y: 0, ok: false, eig: 0, err: 0 };
+function lk(P, Q, x0, y0, ix0, iy0) {
+  const win = CFG.win, nl = P.length;
+  let gx = ix0 / (1 << (nl - 1)), gy = iy0 / (1 << (nl - 1));
+  LK.ok = false;
+  for (let L = nl - 1; L >= 0; L--) {
+    const lp = P[L], lq = Q[L], w = lp.w, h = lp.h, sc = 1 / (1 << L);
+    const px = x0 * sc, py = y0 * sc;
+    if (px < win + 1 || py < win + 1 || px > w - win - 2 || py > h - win - 2) {
+      if (L === 0) return LK;
+      gx *= 2; gy *= 2; continue;
+    }
+    const ix = px | 0, iy = py | 0, ax = px - ix, ay = py - iy;
+    const a00 = (1 - ax) * (1 - ay), a10 = ax * (1 - ay), a01 = (1 - ax) * ay, a11 = ax * ay;
+    const I = lp.img, IX = lp.gx, IY = lp.gy;
+    let Gxx = 0, Gxy = 0, Gyy = 0, n = 0;
+    for (let dy = -win; dy <= win; dy++) {
+      let o = (iy + dy) * w + ix - win;
+      for (let dx = -win; dx <= win; dx++, o++, n++) {
+        const t = a00 * I[o] + a10 * I[o + 1] + a01 * I[o + w] + a11 * I[o + w + 1];
+        const tx = a00 * IX[o] + a10 * IX[o + 1] + a01 * IX[o + w] + a11 * IX[o + w + 1];
+        const ty = a00 * IY[o] + a10 * IY[o + 1] + a01 * IY[o + w] + a11 * IY[o + w + 1];
+        TT[n] = t; TX[n] = tx; TY[n] = ty;
+        Gxx += tx * tx; Gxy += tx * ty; Gyy += ty * ty;
+      }
+    }
+    const det = Gxx * Gyy - Gxy * Gxy;
+    const eig = (Gxx + Gyy - Math.sqrt((Gxx - Gyy) * (Gxx - Gyy) + 4 * Gxy * Gxy)) / (2 * WN);
+    if (L === 0) LK.eig = eig;
+    if (det < 1e-6 || eig < CFG.minEig * (L === 0 ? 1 : 0.25)) {
+      if (L === 0) return LK;
+      gx *= 2; gy *= 2; continue;
+    }
+    const J = lq.img;
+    let vx = 0, vy = 0, okL = true;
+    for (let it = 0; it < CFG.lkIters; it++) {
+      const qx = px + gx + vx, qy = py + gy + vy;
+      if (qx < win + 1 || qy < win + 1 || qx > w - win - 2 || qy > h - win - 2) { okL = false; break; }
+      const jx = qx | 0, jy = qy | 0, ex0 = qx - jx, ey0 = qy - jy;
+      const b00 = (1 - ex0) * (1 - ey0), b10 = ex0 * (1 - ey0), b01 = (1 - ex0) * ey0, b11 = ex0 * ey0;
+      let sx = 0, sy = 0; n = 0;
+      for (let dy = -win; dy <= win; dy++) {
+        let o = (jy + dy) * w + jx - win;
+        for (let dx = -win; dx <= win; dx++, o++, n++) {
+          const d = TT[n] - (b00 * J[o] + b10 * J[o + 1] + b01 * J[o + w] + b11 * J[o + w + 1]);
+          sx += d * TX[n]; sy += d * TY[n];
+        }
+      }
+      const ex = (Gyy * sx - Gxy * sy) / det, ey = (Gxx * sy - Gxy * sx) / det;
+      vx += ex; vy += ey;
+      if (ex * ex + ey * ey < 0.0009) break;
+    }
+    if (!okL && L === 0) return LK;
+    if (L > 0) { gx = 2 * (gx + vx); gy = 2 * (gy + vy); } else { gx += vx; gy += vy; }
+  }
+  // final photometric residual at level 0
+  const lq = Q[0], w = lq.w, J = lq.img;
+  const qx = x0 + gx, qy = y0 + gy;
+  if (qx < CFG.win + 1 || qy < CFG.win + 1 || qx > w - CFG.win - 2 || qy > lq.h - CFG.win - 2) return LK;
+  const jx = qx | 0, jy = qy | 0, ex0 = qx - jx, ey0 = qy - jy;
+  const b00 = (1 - ex0) * (1 - ey0), b10 = ex0 * (1 - ey0), b01 = (1 - ex0) * ey0, b11 = ex0 * ey0;
+  let e = 0, n = 0;
+  for (let dy = -CFG.win; dy <= CFG.win; dy++) {
+    let o = (jy + dy) * w + jx - CFG.win;
+    for (let dx = -CFG.win; dx <= CFG.win; dx++, o++, n++) {
+      e += Math.abs(TT[n] - (b00 * J[o] + b10 * J[o + 1] + b01 * J[o + w] + b11 * J[o + w + 1]));
+    }
+  }
+  LK.err = e / WN;
+  if (LK.err > CFG.resThr) return LK;
+  LK.x = qx; LK.y = qy; LK.ok = true;
+  return LK;
+}
+
+/* ------------------------------------------------------------------ */
+/* FAST-9 corner detection with grid bucketing                         */
+/* ------------------------------------------------------------------ */
+const CIRC = [[0, -3], [1, -3], [2, -2], [3, -1], [3, 0], [3, 1], [2, 2], [1, 3],
+  [0, 3], [-1, 3], [-2, 2], [-3, 1], [-3, 0], [-3, -1], [-2, -2], [-1, -3]];
+function has9(m) {
+  if (!m) return false;
+  const x = (m | (m << 16)) >>> 0;
+  let r = x;
+  for (let k = 1; k < 9; k++) r &= x >>> k;
+  return (r & 0xFFFF) !== 0;
+}
+function detect(g, fi) {
+  const cp = CFG.cellPx, gw = Math.ceil(W / cp), gh = Math.ceil(H / cp), nc = gw * gh;
+  if (!occ || occ.length !== nc) { occ = new Uint8Array(nc); best = new Float32Array(nc); bx = new Int16Array(nc); by = new Int16Array(nc); }
+  occ.fill(0); best.fill(0);
+  for (const tr of tracks) {
+    const ci = ((tr.y / cp) | 0) * gw + ((tr.x / cp) | 0);
+    if (ci >= 0 && ci < nc) occ[ci] = 1;
+  }
+  let free = 0; for (let i = 0; i < nc; i++) if (!occ[i]) free++;
+  if (free === 0) return;
+  const off = CIRC.map(([dx, dy]) => dy * W + dx);
+  const thr = fastThr;
+  for (let y = 4; y < H - 4; y++) {
+    const rowCell = ((y / cp) | 0) * gw;
+    for (let x = 4; x < W - 4; x++) {
+      const ci = rowCell + ((x / cp) | 0);
+      if (occ[ci]) { x = (((x / cp) | 0) + 1) * cp - 1; continue; }
+      const o = y * W + x, p = g[o], hi = p + thr, lo = p - thr;
+      const v0 = g[o + off[0]], v4 = g[o + off[4]], v8 = g[o + off[8]], v12 = g[o + off[12]];
+      const nb = (v0 > hi) + (v4 > hi) + (v8 > hi) + (v12 > hi);
+      const nd = (v0 < lo) + (v4 < lo) + (v8 < lo) + (v12 < lo);
+      if (nb < 2 && nd < 2) continue;
+      let mb = 0, md = 0;
+      for (let i = 0; i < 16; i++) { const v = g[o + off[i]]; if (v > hi) mb |= 1 << i; else if (v < lo) md |= 1 << i; }
+      let s = 0;
+      if (nb >= 2 && has9(mb)) { for (let i = 0; i < 16; i++) if ((mb >> i) & 1) s += g[o + off[i]] - hi; }
+      else if (nd >= 2 && has9(md)) { for (let i = 0; i < 16; i++) if ((md >> i) & 1) s += lo - g[o + off[i]]; }
+      else continue;
+      s += 1;
+      if (s > best[ci]) { best[ci] = s; bx[ci] = x; by[ci] = y; }
+    }
+  }
+  const cand = [];
+  for (let i = 0; i < nc; i++) if (best[i] > 0) cand.push(i);
+  if (cand.length < free * 0.35) fastThr = Math.max(6, fastThr - 1);
+  else if (cand.length > free * 0.85) fastThr = Math.min(40, fastThr + 1);
+  cand.sort((a, b) => best[b] - best[a]);
+  const room = CFG.maxTracks - tracks.length;
+  for (let q = 0; q < cand.length && q < room; q++) {
+    const ci = cand[q];
+    const tr = newTrack(bx[ci], by[ci], g[by[ci] * W + bx[ci]], fi);
+    tracks.push(tr);
+  }
+}
+function newTrack(x, y, gval, fi) {
+  const tr = {
+    id: nextId++, x, y, n: 0,
+    ou: new Float32Array(CFG.maxObs), ov: new Float32Array(CFG.maxObs), of: new Int32Array(CFG.maxObs),
+    lc: [0, 0, 0], X: null, state: 0, par: 0, sig: 1e9, res: 0, bad: 0, age: 0, t0: fr.t[fi], gv: gval
+  };
+  addObs(tr, fi);
+  return tr;
+}
+
+/* ------------------------------------------------------------------ */
+/* geometry                                                            */
+/* ------------------------------------------------------------------ */
+const D3 = new Float64Array(3), X3 = new Float64Array(3), P2 = new Float64Array(2);
+function rayOf(u, v, fi, mode, out) {
+  const it = fr.I[fi], R = fr.R[fi];
+  let uc = u + 0.5, vc = v + 0.5;
+  if (mode & 1) vc = it.h - vc;
+  if (mode & 2) uc = it.w - uc;
+  const x = (uc - it.cx) / it.fx, y = -(vc - it.cy) / it.fy;
+  const dx = R[0] * x + R[1] * y - R[2], dy = R[3] * x + R[4] * y - R[5], dz = R[6] * x + R[7] * y - R[8];
+  const nn = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz);
+  out[0] = dx * nn; out[1] = dy * nn; out[2] = dz * nn;
+}
+function project(X, fi, mode, out) {
+  const R = fr.R[fi], C = fr.C[fi], it = fr.I[fi];
+  const vx = X[0] - C[0], vy = X[1] - C[1], vz = X[2] - C[2];
+  const cx = R[0] * vx + R[3] * vy + R[6] * vz;
+  const cy = R[1] * vx + R[4] * vy + R[7] * vz;
+  const cz = R[2] * vx + R[5] * vy + R[8] * vz;
+  if (cz > -0.05) return false;
+  let uc = it.cx + it.fx * cx / -cz, vc = it.cy - it.fy * cy / -cz;
+  if (mode & 1) vc = it.h - vc;
+  if (mode & 2) uc = it.w - uc;
+  out[0] = uc - 0.5; out[1] = vc - 0.5;
+  return true;
+}
+function addObs(tr, fi) {
+  if (tr.n === CFG.maxObs) {
+    for (let i = 1; i < tr.n - 1; i++) { tr.ou[i] = tr.ou[i + 1]; tr.ov[i] = tr.ov[i + 1]; tr.of[i] = tr.of[i + 1]; }
+    tr.n--;
+  }
+  tr.ou[tr.n] = tr.x; tr.ov[tr.n] = tr.y; tr.of[tr.n] = fi; tr.n++;
+  const C = fr.C[fi]; tr.lc[0] = C[0]; tr.lc[1] = C[1]; tr.lc[2] = C[2];
+}
+function removeObs(tr, i) {
+  for (let j = i; j < tr.n - 1; j++) { tr.ou[j] = tr.ou[j + 1]; tr.ov[j] = tr.ov[j + 1]; tr.of[j] = tr.of[j + 1]; }
+  tr.n--;
+}
+const RAYS = new Float64Array(64 * 3);
+const TRI = { ok: false, X: new Float64Array(3), par: 0, res: 0, worst: -1, worstErr: 0, sig: 1e9, depth: 0, behind: false };
+function triCore(tr, mode) {
+  const n = tr.n;
+  TRI.ok = false; TRI.behind = false; TRI.par = 0;
+  if (n < 2) return TRI;
+  let A00 = 0, A01 = 0, A02 = 0, A11 = 0, A12 = 0, A22 = 0, b0 = 0, b1 = 0, b2 = 0;
+  for (let i = 0; i < n; i++) {
+    rayOf(tr.ou[i], tr.ov[i], tr.of[i], mode, D3);
+    const d0 = D3[0], d1 = D3[1], d2 = D3[2];
+    RAYS[3 * i] = d0; RAYS[3 * i + 1] = d1; RAYS[3 * i + 2] = d2;
+    const C = fr.C[tr.of[i]];
+    const m00 = 1 - d0 * d0, m01 = -d0 * d1, m02 = -d0 * d2, m11 = 1 - d1 * d1, m12 = -d1 * d2, m22 = 1 - d2 * d2;
+    A00 += m00; A01 += m01; A02 += m02; A11 += m11; A12 += m12; A22 += m22;
+    b0 += m00 * C[0] + m01 * C[1] + m02 * C[2];
+    b1 += m01 * C[0] + m11 * C[1] + m12 * C[2];
+    b2 += m02 * C[0] + m12 * C[1] + m22 * C[2];
+  }
+  let minc = 1;
+  for (let i = 1; i < n; i++) {
+    const c = RAYS[0] * RAYS[3 * i] + RAYS[1] * RAYS[3 * i + 1] + RAYS[2] * RAYS[3 * i + 2];
+    if (c < minc) minc = c;
+  }
+  const L = 3 * (n - 1);
+  for (let i = 1; i < n - 1; i++) {
+    const c = RAYS[L] * RAYS[3 * i] + RAYS[L + 1] * RAYS[3 * i + 1] + RAYS[L + 2] * RAYS[3 * i + 2];
+    if (c < minc) minc = c;
+  }
+  const par = Math.acos(Math.min(1, Math.max(-1, minc)));
+  TRI.par = par;
+  if (par < CFG.triMinParDeg * DEG) return TRI;
+  const c00 = A11 * A22 - A12 * A12, c01 = A02 * A12 - A01 * A22, c02 = A01 * A12 - A02 * A11;
+  const det = A00 * c00 + A01 * c01 + A02 * c02;
+  if (Math.abs(det) < 1e-12) return TRI;
+  const c11 = A00 * A22 - A02 * A02, c12 = A01 * A02 - A00 * A12, c22 = A00 * A11 - A01 * A01;
+  const X0 = (c00 * b0 + c01 * b1 + c02 * b2) / det;
+  const X1 = (c01 * b0 + c11 * b1 + c12 * b2) / det;
+  const X2 = (c02 * b0 + c12 * b1 + c22 * b2) / det;
+  let worst = -1, worstErr = 0, sum2 = 0, dsum = 0;
+  for (let i = 0; i < n; i++) {
+    const C = fr.C[tr.of[i]];
+    const vx = X0 - C[0], vy = X1 - C[1], vz = X2 - C[2];
+    const tt = vx * RAYS[3 * i] + vy * RAYS[3 * i + 1] + vz * RAYS[3 * i + 2];
+    if (tt < 0.25) { TRI.behind = true; return TRI; }
+    const px = vx - tt * RAYS[3 * i], py = vy - tt * RAYS[3 * i + 1], pz = vz - tt * RAYS[3 * i + 2];
+    const err = Math.sqrt(px * px + py * py + pz * pz) / tt * fr.I[tr.of[i]].fy;
+    sum2 += err * err; dsum += tt;
+    if (err > worstErr) { worstErr = err; worst = i; }
+  }
+  TRI.X[0] = X0; TRI.X[1] = X1; TRI.X[2] = X2;
+  TRI.res = Math.sqrt(sum2 / n); TRI.worst = worst; TRI.worstErr = worstErr; TRI.depth = dsum / n;
+  const f = fr.I[tr.of[n - 1]].fy;
+  TRI.sig = TRI.depth * (CFG.pxSigma / f) / Math.max(Math.sin(par), 0.005) / Math.sqrt(Math.max(1, (n - 1) / 2));
+  TRI.ok = true;
+  return TRI;
+}
+function retri(tr) {
+  let r = triCore(tr, flipMode);
+  if (r.ok && r.worstErr > CFG.maxResPx * 2 && tr.n >= 4) { removeObs(tr, r.worst); r = triCore(tr, flipMode); }
+  if (!r.ok) {
+    tr.X = null; tr.state = 0; tr.par = r.par;
+    if (flipLocked && r.behind) { tr.bad++; if (tr.bad > 2) tr.kill = true; }
+    return;
+  }
+  if (r.worstErr > CFG.maxResPx * 2) {
+    tr.X = null; tr.state = 0;
+    if (flipLocked) { tr.bad++; if (tr.bad > 2) tr.kill = true; }
+    return;
+  }
+  if (!tr.X) tr.X = new Float64Array(3);
+  tr.X[0] = r.X[0]; tr.X[1] = r.X[1]; tr.X[2] = r.X[2];
+  tr.par = r.par; tr.sig = r.sig; tr.res = r.res;
+  tr.state = (tr.n >= 3 && r.par >= CFG.greenParDeg * DEG && r.sig <= CFG.greenSigma && r.res <= CFG.maxResPx) ? 2 : 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* tracking step                                                       */
+/* ------------------------------------------------------------------ */
+function trackStep(fi) {
+  const P = pyrA, Q = pyrB, keep = [], dxs = [], dys = [];
+  for (const tr of tracks) {
+    let gx = medFX, gy = medFY;
+    if (flipLocked && prevGrayFi >= 0) {
+      if (tr.X && tr.state >= 1) {
+        if (project(tr.X, fi, flipMode, P2)) { gx = P2[0] - tr.x; gy = P2[1] - tr.y; }
+      } else {
+        rayOf(tr.x, tr.y, prevGrayFi, flipMode, D3);
+        const C = fr.C[prevGrayFi];
+        X3[0] = C[0] + 30 * D3[0]; X3[1] = C[1] + 30 * D3[1]; X3[2] = C[2] + 30 * D3[2];
+        if (project(X3, fi, flipMode, P2)) { gx = P2[0] - tr.x; gy = P2[1] - tr.y; }
+      }
+      if (gx * gx + gy * gy > 3600) { gx = medFX; gy = medFY; }
+    }
+    const r = lk(P, Q, tr.x, tr.y, gx, gy);
+    if (!r.ok) { lose(tr); continue; }
+    const nx = r.x, ny = r.y;
+    const b = lk(Q, P, nx, ny, tr.x - nx, tr.y - ny);
+    if (!b.ok || (b.x - tr.x) * (b.x - tr.x) + (b.y - tr.y) * (b.y - tr.y) > CFG.fbThr * CFG.fbThr) { lose(tr); continue; }
+    if (nx < 5 || ny < 5 || nx > W - 6 || ny > H - 6) { lose(tr); continue; }
+    dxs.push(nx - tr.x); dys.push(ny - tr.y);
+    tr.x = nx; tr.y = ny; tr.age++;
+    keep.push(tr);
+  }
+  tracks = keep;
+  medFX = dxs.length ? median(dxs) : 0;
+  medFY = dys.length ? median(dys) : 0;
+}
+function updateObs(fi) {
+  const C = fr.C[fi], t = fr.t[fi], keep = [];
+  for (const tr of tracks) {
+    if (tr.kill) { lose(tr); continue; }
+    if (t - tr.t0 > CFG.maxTrackSpan && tr.n >= 2) {
+      commit(tr);
+      tr.n = 0; tr.X = null; tr.state = 0; tr.par = 0; tr.sig = 1e9; tr.bad = 0; tr.t0 = t; tr.id = nextId++;
+      addObs(tr, fi); keep.push(tr); continue;
+    }
+    const dx = C[0] - tr.lc[0], dy = C[1] - tr.lc[1], dz = C[2] - tr.lc[2];
+    if (dx * dx + dy * dy + dz * dz >= CFG.obsMinMove * CFG.obsMinMove) {
+      addObs(tr, fi);
+      retri(tr);
+      if (tr.kill) { lose(tr); continue; }
+    }
+    keep.push(tr);
+  }
+  tracks = keep;
+}
+function lose(tr) { commit(tr); lostCount++; }
+function commit(tr) {
+  if (!started || !grid || !flipLocked) return;
+  if (!tr.X || tr.state < 1 || tr.sig > CFG.commitSigma || tr.res > CFG.maxResPx) return;
+  const w = Math.min(4, Math.max(0.1, (0.03 / tr.sig) * (0.03 / tr.sig)));
+  addPoint(tr.X[0], tr.X[1], tr.X[2], w, tr.state);
+}
+function addPoint(x, y, z, w, state) {
+  if (nPts * 4 + 4 > pts.length) { const n2 = new Float32Array(pts.length * 2); n2.set(pts); pts = n2; }
+  pts[nPts * 4] = x; pts[nPts * 4 + 1] = y; pts[nPts * 4 + 2] = z; pts[nPts * 4 + 3] = w;
+  nPts++;
+  newPts.push(x, y, z, state);
+  grid.addFeat(x, y, z, w);
+}
+
+/* ------------------------------------------------------------------ */
+/* camera image orientation check                                      */
+/* The browser hands us the camera image as a GPU texture whose row    */
+/* order is not specified. We test the 4 possible flips: the right one */
+/* gives consistent triangulation and puts the ground below the phone. */
+/* ------------------------------------------------------------------ */
+function evalFlip() {
+  const res = [[], [], [], []], hgt = [[], [], [], []], ok = [0, 0, 0, 0];
+  let cnt = 0;
+  for (const tr of tracks) {
+    if (tr.n < 3) continue;
+    const Ca = fr.C[tr.of[0]], Cb = fr.C[tr.of[tr.n - 1]];
+    const bl = Math.hypot(Ca[0] - Cb[0], Ca[1] - Cb[1], Ca[2] - Cb[2]);
+    if (bl < 0.2) continue;
+    for (let m = 0; m < 4; m++) {
+      const r = triCore(tr, m);
+      if (r.ok) { ok[m]++; res[m].push(Math.min(r.res, 30)); hgt[m].push(r.X[1] - Cb[1]); }
+      else res[m].push(30);
+    }
+    if (++cnt >= 160) break;
+  }
+  const med = res.map(a => a.length ? median(a) : 99);
+  const mh = hgt.map(a => a.length ? median(a) : 0);
+  const okf = ok.map(v => cnt ? v / cnt : 0);
+  flipStats = { n: cnt, med: med.map(v => +v.toFixed(2)), h: mh.map(v => +v.toFixed(2)), ok: okf.map(v => +v.toFixed(2)) };
+  if (cnt < 25) return;
+  let bestRes = Math.min(...med);
+  const cands = [0, 1, 2, 3].filter(m => okf[m] >= 0.6 && med[m] <= Math.max(2.0, 1.6 * bestRes));
+  if (!cands.length || bestRes > 3) return;
+  cands.sort((a, b) => mh[a] - mh[b]);
+  const pick = cands[0];
+  if (mh[pick] > -0.15) return;
+  if (cands.length > 1 && mh[cands[1]] - mh[pick] < 0.3) return;
+  flipCount++;
+  if (flipCount < 2 && pick !== flipMode) { flipMode = pick; return; }
+  flipMode = pick; flipLocked = true;
+  for (const tr of tracks) retri(tr);
+}
+
+/* ------------------------------------------------------------------ */
+/* height grid                                                         */
+/* ------------------------------------------------------------------ */
+function Grid(N, s) {
+  this.N = N; this.s = s; this.x0 = 0; this.z0 = 0;
+  const n = N * N;
+  this.wF = new Float32Array(n); this.hF = new Float32Array(n);
+  this.wD = new Float32Array(n); this.hD = new Float32Array(n); this.qD = new Float32Array(n);
+  this.wA = new Float32Array(n); this.hA = new Float32Array(n);
+  this.wB = new Float32Array(n); this.hB = new Float32Array(n);
+  this.sect = new Uint16Array(n);
+  this.bb = [N, N, -1, -1];
+}
+Grid.prototype.setOrigin = function (x, z) {
+  this.x0 = x - this.N * this.s / 2; this.z0 = z - this.N * this.s / 2;
+};
+Grid.prototype.cell = function (x, z) {
+  const i = Math.floor((x - this.x0) / this.s), k = Math.floor((z - this.z0) / this.s);
+  if (i < 0 || k < 0 || i >= this.N || k >= this.N) return -1;
+  return k * this.N + i;
+};
+Grid.prototype.touch = function (c) {
+  const i = c % this.N, k = (c / this.N) | 0, b = this.bb;
+  if (i < b[0]) b[0] = i; if (k < b[1]) b[1] = k; if (i > b[2]) b[2] = i; if (k > b[3]) b[3] = k;
+};
+Grid.prototype.addFeat = function (x, y, z, w) {
+  const c = this.cell(x, z); if (c < 0) return;
+  if (this.wD[c] > 3 && Math.abs(y - this.hD[c]) > 0.6) return;
+  const W0 = this.wF[c], W2 = W0 + w;
+  this.hF[c] += (y - this.hF[c]) * w / W2; this.wF[c] = W2;
+  this.touch(c);
+};
+Grid.prototype.addDepth = function (x, y, z, w, pass, sector) {
+  const c = this.cell(x, z); if (c < 0) return;
+  const W0 = this.wD[c];
+  if (W0 > 1.0) {
+    const sd = Math.sqrt(this.qD[c] / W0);
+    if (Math.abs(y - this.hD[c]) > Math.max(0.25, 4 * sd)) return;
+  }
+  const W2 = W0 + w, d = y - this.hD[c], m2 = this.hD[c] + d * w / W2;
+  this.qD[c] += w * d * (y - m2); this.hD[c] = m2; this.wD[c] = W2;
+  if (pass === 1) { const a = this.wA[c] + w; this.hA[c] += (y - this.hA[c]) * w / a; this.wA[c] = a; }
+  else if (pass === 2) { const a = this.wB[c] + w; this.hB[c] += (y - this.hB[c]) * w / a; this.wB[c] = a; }
+  this.sect[c] |= (1 << sector);
+  this.touch(c);
+};
+Grid.prototype.height = function (c) {
+  const wf = this.wF[c] * CFG.kF, wd = this.wD[c], Wt = wf + wd;
+  return Wt > 0 ? (wf * this.hF[c] + wd * this.hD[c]) / Wt : NaN;
+};
+Grid.prototype.weight = function (c) { return this.wF[c] * CFG.kF + this.wD[c]; };
+
+/* ------------------------------------------------------------------ */
+/* depth fusion                                                        */
+/* ------------------------------------------------------------------ */
+function fuseDepth(D, fi) {
+  const R = fr.R[fi], C = fr.C[fi];
+  const nx = D.nx, ny = D.ny, data = D.data, p0 = D.p[0], p5 = D.p[1], p8 = D.p[2], p9 = D.p[3];
+  const sector = (((Math.atan2(C[2] - center.z, C[0] - center.x) + Math.PI) / (2 * Math.PI) * 16) | 0) & 15;
+  const pass = lastProgress < 0.15 ? 1 : (lastProgress > 0.88 ? 2 : 0);
+  const e = CFG.depthEdge;
+  let used = 0;
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const o = j * nx + i, d = data[o];
+      if (!(d >= CFG.depthMin && d <= CFG.depthMax)) continue;
+      let bad = false;
+      if (i > 0) { const q = data[o - 1]; if (q > 0 && Math.abs(q - d) > e * d) bad = true; }
+      if (!bad && i < nx - 1) { const q = data[o + 1]; if (q > 0 && Math.abs(q - d) > e * d) bad = true; }
+      if (!bad && j > 0) { const q = data[o - nx]; if (q > 0 && Math.abs(q - d) > e * d) bad = true; }
+      if (!bad && j < ny - 1) { const q = data[o + nx]; if (q > 0 && Math.abs(q - d) > e * d) bad = true; }
+      if (bad) continue;
+      const xn = 2 * (i + 0.5) / nx - 1, yn = 1 - 2 * (j + 0.5) / ny;
+      const cx = d * (xn + p8) / p0, cy = d * (yn + p9) / p5, cz = -d;
+      const wx = R[0] * cx + R[1] * cy + R[2] * cz + C[0];
+      const wy = R[3] * cx + R[4] * cy + R[5] * cz + C[1];
+      const wz = R[6] * cx + R[7] * cy + R[8] * cz + C[2];
+      const w = CFG.depthW / (1 + (d / 3) * (d / 3));
+      grid.addDepth(wx, wy, wz, w, pass, sector);
+      used++;
+    }
+  }
+  nDepthFrames++; nDepthSamples += used;
+}
+
+/* ------------------------------------------------------------------ */
+/* frame entry point                                                   */
+/* ------------------------------------------------------------------ */
+function processFrame(m) {
+  const t0 = now();
+  const fi = fr.R.length;
+  fr.R.push(m.R); fr.C.push(m.C); fr.I.push(m.intr); fr.t.push(m.t);
+  lastProgress = m.progress || 0;
+  if (started) camPath.push(m.C[0], m.C[1], m.C[2], m.t, lastProgress);
+  if (m.gray) {
+    const g = m.gray instanceof Uint8Array ? m.gray : new Uint8Array(m.gray);
+    const w = m.intr.w, h = m.intr.h;
+    if (w !== W || h !== H || !pyrA) {
+      for (const tr of tracks) commit(tr);
+      W = w; H = h; pyrA = makePyr(w, h, CFG.levels); pyrB = makePyr(w, h, CFG.levels);
+      hasPrev = false; tracks = [];
+    }
+    buildPyr(pyrB, g);
+    if (hasPrev) trackStep(fi);
+    updateObs(fi);
+    if (tracks.length < CFG.maxTracks * 0.9) detect(g, fi);
+    if (!flipLocked && tracks.length && (fi % CFG.flipEvalEvery) === 0) evalFlip();
+    const tmp = pyrA; pyrA = pyrB; pyrB = tmp; hasPrev = true; prevGrayFi = fi;
+  }
+  if (m.depth && started) fuseDepth(m.depth, fi);
+  if (m.hits) for (const p of m.hits) groundHits.push(p[0], p[1], p[2]);
+  procTimes.push(now() - t0); if (procTimes.length > 30) procTimes.shift();
+  return packOutput(fi, m.t);
+}
+function start(c, t) {
+  center = { x: c[0], y: c[1], z: c[2] };
+  grid = new Grid(CFG.gridN, CFG.cellSize);
+  grid.setOrigin(center.x, center.z);
+  started = true; tStart = t;
+}
+function packOutput(fi, t) {
+  const n = tracks.length, tr = new Float32Array(n * 7);
+  let nGreen = 0;
+  for (let i = 0; i < n; i++) {
+    const k = tracks[i], o = i * 7;
+    tr[o] = k.x; tr[o + 1] = k.y; tr[o + 2] = k.state;
+    if (k.X) { tr[o + 3] = k.X[0]; tr[o + 4] = k.X[1]; tr[o + 5] = k.X[2]; tr[o + 6] = 1; }
+    if (k.state === 2) nGreen++;
+  }
+  const np = new Float32Array(newPts); newPts = [];
+  const msg = {
+    type: 'tracks', fi, tracks: tr, newPts: np, flipMode, flipLocked,
+    stats: { nTracks: n, nGreen, nPts, nDepthFrames, ms: procTimes.length ? median(procTimes) : 0, flip: flipStats, fastThr }
+  };
+  const transfer = [tr.buffer, np.buffer];
+  if (started && t - lastMiniT > CFG.miniEveryMs / 1000) {
+    lastMiniT = t;
+    const mm = minimap(128);
+    if (mm) { msg.mini = mm; transfer.push(mm.rgba.buffer); }
+  }
+  return { msg, transfer };
+}
+
+/* ------------------------------------------------------------------ */
+/* minimap (top view of what has been measured so far)                 */
+/* ------------------------------------------------------------------ */
+function groundGuess() {
+  if (groundHits.length >= 15) {
+    const ys = []; for (let i = 1; i < groundHits.length; i += 3) ys.push(groundHits[i]);
+    return median(ys);
+  }
+  const g = grid, b = g.bb, hs = [];
+  if (b[2] < 0) return center ? center.y - 1 : 0;
+  const step = Math.max(1, Math.floor(((b[2] - b[0] + 1) * (b[3] - b[1] + 1)) / 4000));
+  let q = 0;
+  for (let k = b[1]; k <= b[3]; k++) for (let i = b[0]; i <= b[2]; i++) {
+    if ((q++ % step) !== 0) continue;
+    const c = k * g.N + i; if (g.weight(c) >= CFG.minCellW) hs.push(g.height(c));
+  }
+  if (!hs.length) return 0;
+  hs.sort((a, b) => a - b);
+  return hs[Math.floor(hs.length * 0.04)];
+}
+function minimap(S) {
+  const g = grid, b = g.bb;
+  if (b[2] < 0) return null;
+  const gy = groundGuess();
+  const ci = (b[0] + b[2]) / 2, ck = (b[1] + b[3]) / 2;
+  const span = Math.max(b[2] - b[0], b[3] - b[1], 40) * 1.15 + 6;
+  const rgba = new Uint8ClampedArray(S * S * 4);
+  let maxH = 0.5, sx = 0, sz = 0, sw = 0;
+  const hs = new Float32Array(S * S).fill(NaN);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = Math.floor(ci + (x / S - 0.5) * span), k = Math.floor(ck + (y / S - 0.5) * span);
+    if (i < 0 || k < 0 || i >= g.N || k >= g.N) continue;
+    const c = k * g.N + i;
+    if (g.weight(c) < CFG.minCellW) continue;
+    const h = g.height(c) - gy; hs[y * S + x] = h;
+    if (h > maxH) maxH = h;
+  }
+  for (let k = b[1]; k <= b[3]; k += 2) for (let i = b[0]; i <= b[2]; i += 2) {
+    const c = k * g.N + i; if (g.weight(c) < CFG.minCellW) continue;
+    const h = g.height(c) - gy; if (h > 0.3) { sx += (g.x0 + (i + 0.5) * g.s) * h; sz += (g.z0 + (k + 0.5) * g.s) * h; sw += h; }
+  }
+  for (let p = 0; p < S * S; p++) {
+    const h = hs[p]; if (h !== h) continue;
+    const c = heightColor(Math.max(0, h) / maxH);
+    rgba[p * 4] = c[0]; rgba[p * 4 + 1] = c[1]; rgba[p * 4 + 2] = c[2]; rgba[p * 4 + 3] = 235;
+  }
+  const res = {
+    S, rgba, x0: g.x0 + (ci - span / 2) * g.s, z0: g.z0 + (ck - span / 2) * g.s, size: span * g.s, maxH, groundY: gy
+  };
+  if (sw > 1) res.centerEst = [sx / sw, sz / sw];
+  return res;
+}
+function heightColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const stops = [[0, 30, 60, 150], [0.25, 0, 170, 200], [0.5, 60, 200, 80], [0.75, 250, 200, 30], [1, 230, 60, 40]];
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const a = stops[i - 1], b = stops[i], u = (t - a[0]) / (b[0] - a[0]);
+      return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u];
+    }
+  }
+  return [230, 60, 40];
+}
+
+/* ------------------------------------------------------------------ */
+/* final computation                                                   */
+/* ------------------------------------------------------------------ */
+function rng32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function median(a) { const b = Array.from(a).sort((x, y) => x - y), n = b.length; return n ? (n % 2 ? b[(n - 1) / 2] : 0.5 * (b[n / 2 - 1] + b[n / 2])) : 0; }
+
+function fitGround(H, obs, Wt, nx, nz, X0, Z0, s, camY) {
+  const cx = [], cz = [], ch = [], cw = [];
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i; if (!obs[j]) continue;
+    const h = H[j]; if (h < camY - 4.5 || h > camY - 0.25) continue;
+    cx.push(X0 + i * s); cz.push(Z0 + k * s); ch.push(h); cw.push(Math.min(Wt[j], 3));
+  }
+  for (let q = 0; q < groundHits.length; q += 3) {
+    const h = groundHits[q + 1]; if (h < camY - 4.5 || h > camY - 0.25) continue;
+    cx.push(groundHits[q]); cz.push(groundHits[q + 2]); ch.push(h); cw.push(2);
+  }
+  const m = cx.length;
+  if (m < 25) return null;
+  const rnd = rng32(1234567);
+  const order = Array.from({ length: m }, (_, i) => i).sort((a, b) => ch[a] - ch[b]);
+  const low = order.slice(0, Math.max(10, Math.floor(m * 0.45)));
+  let S = order;
+  if (m > 12000) { S = []; for (let q = 0; q < 12000; q++) S.push((rnd() * m) | 0); }
+  let bestP = null, bestScore = -1e18;
+  for (let it = 0; it < 320; it++) {
+    const p = low[(rnd() * low.length) | 0], q = low[(rnd() * low.length) | 0], r = low[(rnd() * low.length) | 0];
+    const ux = cx[q] - cx[p], uz = cz[q] - cz[p], uh = ch[q] - ch[p];
+    const vx = cx[r] - cx[p], vz = cz[r] - cz[p], vh = ch[r] - ch[p];
+    const den = ux * vz - uz * vx;
+    if (Math.abs(den) < 1.0) continue;
+    const a = (uh * vz - uz * vh) / den, b = (ux * vh - uh * vx) / den;
+    if (a * a + b * b > 0.031) continue;
+    const c = ch[p] - a * cx[p] - b * cz[p];
+    let sc = 0;
+    for (let qq = 0; qq < S.length; qq++) {
+      const j = S[qq];
+      const rr = ch[j] - (a * cx[j] + b * cz[j] + c);
+      if (rr > -0.06 && rr < 0.06) sc += cw[j]; else if (rr < -0.25) sc -= 3 * cw[j];
+    }
+    if (sc > bestScore) { bestScore = sc; bestP = { a, b, c }; }
+  }
+  if (!bestP) bestP = { a: 0, b: 0, c: ch[order[Math.floor(m * 0.05)]] };
+  let { a, b, c } = bestP, rms = 0, nIn = 0;
+  for (const thr of [0.07, 0.045]) {
+    let mx = 0, mz = 0, sw = 0;
+    for (let j = 0; j < m; j++) {
+      const rr = ch[j] - (a * cx[j] + b * cz[j] + c);
+      if (Math.abs(rr) < thr) { mx += cw[j] * cx[j]; mz += cw[j] * cz[j]; sw += cw[j]; }
+    }
+    if (sw < 1e-6) break;
+    mx /= sw; mz /= sw;
+    let Sxx = 0, Sxz = 0, Szz = 0, Sx = 0, Sz = 0, Sh = 0, Sxh = 0, Szh = 0, S1 = 0;
+    for (let j = 0; j < m; j++) {
+      const rr = ch[j] - (a * cx[j] + b * cz[j] + c);
+      if (Math.abs(rr) >= thr) continue;
+      const w = cw[j], x = cx[j] - mx, z = cz[j] - mz, h = ch[j];
+      Sxx += w * x * x; Sxz += w * x * z; Szz += w * z * z; Sx += w * x; Sz += w * z; S1 += w;
+      Sh += w * h; Sxh += w * x * h; Szh += w * z * h;
+    }
+    // solve [Sxx Sxz Sx; Sxz Szz Sz; Sx Sz S1] [a b c'] = [Sxh Szh Sh]
+    const M = [Sxx, Sxz, Sx, Sxz, Szz, Sz, Sx, Sz, S1], v = [Sxh, Szh, Sh];
+    const sol = solve3(M, v);
+    if (!sol) break;
+    let na = sol[0], nb = sol[1];
+    if (na * na + nb * nb > 0.031) { na = a; nb = b; }
+    a = na; b = nb; c = sol[2] - a * mx - b * mz;
+  }
+  let s2 = 0, sw2 = 0;
+  for (let j = 0; j < m; j++) {
+    const rr = ch[j] - (a * cx[j] + b * cz[j] + c);
+    if (Math.abs(rr) < 0.06) { s2 += cw[j] * rr * rr; sw2 += cw[j]; nIn++; }
+  }
+  rms = sw2 > 0 ? Math.sqrt(s2 / sw2) : 0.05;
+  return { a, b, c, rms, nIn };
+}
+function solve3(M, v) {
+  const [a, b, c, d, e, f, g, h, i] = M;
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-12) return null;
+  const D = -(b * i - c * h), E = a * i - c * g, Fq = -(a * h - b * g);
+  const G = b * f - c * e, Hh = -(a * f - c * d), I = a * e - b * d;
+  return [(A * v[0] + D * v[1] + G * v[2]) / det, (B * v[0] + E * v[1] + Hh * v[2]) / det, (C * v[0] + Fq * v[1] + I * v[2]) / det];
+}
+function convexHull(P) {
+  const pts2 = P.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  if (pts2.length < 3) return pts2;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of pts2) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (let i = pts2.length - 1; i >= 0; i--) { const p = pts2[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+function chamfer(mask, nx, nz) {
+  const n = nx * nz, BIG = 1e9, dist = new Float32Array(n);
+  for (let j = 0; j < n; j++) dist[j] = mask[j] ? 0 : BIG;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i; let d = dist[j];
+    if (i > 0) d = Math.min(d, dist[j - 1] + 1);
+    if (k > 0) { d = Math.min(d, dist[j - nx] + 1); if (i > 0) d = Math.min(d, dist[j - nx - 1] + 1.414); if (i < nx - 1) d = Math.min(d, dist[j - nx + 1] + 1.414); }
+    dist[j] = d;
+  }
+  for (let k = nz - 1; k >= 0; k--) for (let i = nx - 1; i >= 0; i--) {
+    const j = k * nx + i; let d = dist[j];
+    if (i < nx - 1) d = Math.min(d, dist[j + 1] + 1);
+    if (k < nz - 1) { d = Math.min(d, dist[j + nx] + 1); if (i < nx - 1) d = Math.min(d, dist[j + nx + 1] + 1.414); if (i > 0) d = Math.min(d, dist[j + nx - 1] + 1.414); }
+    dist[j] = d;
+  }
+  return dist;
+}
+
+/* Thin-plate fill of unknown cells: solves the 13-point biharmonic system
+   (20 z - 8 N4 + 2 D4 + F4 = 0) with conjugate gradients. Known cells keep
+   their measured value; cells outside the pile count as ground (0). */
+function biharmonicFill(U, Zs, obs, region, nx, nz) {
+  const m = U.length, idx = new Int32Array(nx * nz).fill(-1);
+  for (let q = 0; q < m; q++) idx[U[q]] = q;
+  const OFF = [[-1, 0, -8], [1, 0, -8], [0, -1, -8], [0, 1, -8], [-1, -1, 2], [1, -1, 2], [-1, 1, 2], [1, 1, 2], [-2, 0, 1], [2, 0, 1], [0, -2, 1], [0, 2, 1]];
+  const nbI = new Int32Array(m * 12).fill(-1), nbW = new Float32Array(m * 12), b = new Float64Array(m);
+  for (let q = 0; q < m; q++) {
+    const u = U[q], i = u % nx, k = (u / nx) | 0;
+    let bb = 0;
+    for (let e = 0; e < 12; e++) {
+      const ii = i + OFF[e][0], kk = k + OFF[e][1], w = OFF[e][2];
+      if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
+      const c = kk * nx + ii, v = idx[c];
+      if (v >= 0) { nbI[q * 12 + e] = v; nbW[q * 12 + e] = w; }
+      else bb -= w * ((obs[c] || region[c]) ? Zs[c] : 0);
+    }
+    b[q] = bb;
+  }
+  const mul = (x, y) => {
+    for (let q = 0; q < m; q++) {
+      let s = 20 * x[q];
+      for (let e = 0; e < 12; e++) { const v = nbI[q * 12 + e]; if (v >= 0) s += nbW[q * 12 + e] * x[v]; }
+      y[q] = s;
+    }
+  };
+  const x = new Float64Array(m), r = new Float64Array(m), p = new Float64Array(m), Ap = new Float64Array(m);
+  for (let q = 0; q < m; q++) x[q] = Zs[U[q]];
+  mul(x, Ap);
+  let rr = 0, bn = 0;
+  for (let q = 0; q < m; q++) { r[q] = b[q] - Ap[q]; p[q] = r[q]; rr += r[q] * r[q]; bn += b[q] * b[q]; }
+  const tol = 1e-12 * Math.max(bn, 1e-9), t0 = now();
+  for (let it = 0; it < 3000 && rr > tol; it++) {
+    mul(p, Ap);
+    let pAp = 0; for (let q = 0; q < m; q++) pAp += p[q] * Ap[q];
+    if (pAp <= 0) break;
+    const al = rr / pAp; let rn = 0;
+    for (let q = 0; q < m; q++) { x[q] += al * p[q]; r[q] -= al * Ap[q]; rn += r[q] * r[q]; }
+    const be = rn / rr; rr = rn;
+    for (let q = 0; q < m; q++) p[q] = r[q] + be * p[q];
+    if (now() - t0 > 4000) break;
+  }
+  for (let q = 0; q < m; q++) Zs[U[q]] = x[q];
+}
+
+function finish(opts) {
+  opts = opts || {};
+  for (const tr of tracks) commit(tr);
+  const warnings = [];
+  const g = grid;
+  if (!started || !g || g.bb[2] < 0) return { msg: { type: 'result', error: 'No 3D data was captured. Make sure tracking works and walk around the pile.' }, transfer: [] };
+  const N = g.N, s = g.s, mg = 8;
+  const i0 = Math.max(0, g.bb[0] - mg), k0 = Math.max(0, g.bb[1] - mg);
+  const i1 = Math.min(N - 1, g.bb[2] + mg), k1 = Math.min(N - 1, g.bb[3] + mg);
+  const nx = i1 - i0 + 1, nz = k1 - k0 + 1, n = nx * nz;
+  const H = new Float32Array(n), Wt = new Float32Array(n), obs = new Uint8Array(n);
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const c = (k0 + k) * N + (i0 + i), j = k * nx + i, w = g.weight(c);
+    if (w >= CFG.minCellW) { H[j] = g.height(c); Wt[j] = w; obs[j] = 1; } else H[j] = NaN;
+  }
+  const X0 = g.x0 + (i0 + 0.5) * s, Z0 = g.z0 + (k0 + 0.5) * s;
+  const nP = camPath.length / 5;
+  if (nP < 10) return { msg: { type: 'result', error: 'The walk was too short.' }, transfer: [] };
+  const ys = []; for (let q = 0; q < nP; q++) ys.push(camPath[q * 5 + 1]);
+  const camY = median(ys);
+  const progress = opts.progress !== undefined ? opts.progress : camPath[(nP - 1) * 5 + 4];
+
+  /* ground plane */
+  const pl = fitGround(H, obs, Wt, nx, nz, X0, Z0, s, camY);
+  if (!pl) return { msg: { type: 'result', error: 'Could not find the ground around the pile. Keep some ground in view while walking.' }, transfer: [] };
+  const base = (x, z) => pl.a * x + pl.b * z + pl.c;
+  const Z = new Float32Array(n);
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i;
+    Z[j] = obs[j] ? H[j] - base(X0 + i * s, Z0 + k * s) : NaN;
+  }
+  let pcx = 0, pcz = 0;
+  for (let q = 0; q < nP; q++) { pcx += camPath[q * 5]; pcz += camPath[q * 5 + 2]; }
+  pcx /= nP; pcz /= nP;
+  const camH = camY - base(pcx, pcz);
+  if (camH < 0.7 || camH > 2.4) warnings.push('Ground level looks unusual (phone was ' + camH.toFixed(2) + ' m above it). Check that enough ground around the pile was in view.');
+
+  /* walking loop -> region that can contain the pile */
+  const hullPts = [];
+  for (let q = 0; q < nP; q += 3) hullPts.push([camPath[q * 5], camPath[q * 5 + 2]]);
+  for (let j = 0; j < n; j += 3) if (obs[j] && Z[j] > 0.3) hullPts.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
+  const hull = convexHull(hullPts);
+  const inside = new Uint8Array(n);
+  const hn = hull.length;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const x = X0 + i * s, z = Z0 + k * s;
+    let inn = hn >= 3;
+    for (let e = 0; e < hn && inn; e++) {
+      const a = hull[e], b = hull[(e + 1) % hn];
+      if ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]) < -1e-9) inn = false;
+    }
+    inside[k * nx + i] = inn ? 1 : 0;
+  }
+
+  /* pile candidates */
+  const zt = Math.max(0.06, 2.5 * pl.rms);
+  const pileObs = new Uint8Array(n);
+  for (let j = 0; j < n; j++) pileObs[j] = (obs[j] && Z[j] > zt) ? 1 : 0;
+  // chamfer distance (in cells) from observed pile cells
+  const dist = chamfer(pileObs, nx, nz);
+  // Unseen cells enclosed by the pile (typically its top) always belong to it.
+  // Unseen cells that connect to open ground are only accepted close to the toe.
+  const rc = Math.max(2, Math.round(0.3 / s));
+  const barrier = new Uint8Array(n);
+  for (let j = 0; j < n; j++) barrier[j] = dist[j] <= rc ? 1 : 0;
+  const ext = new Uint8Array(n), eq = new Int32Array(n);
+  let eh = 0, et = 0;
+  for (let j = 0; j < n; j++) {
+    if (barrier[j]) continue;
+    if (!inside[j] || (obs[j] && Z[j] <= zt)) { ext[j] = 1; eq[et++] = j; }
+  }
+  while (eh < et) {
+    const q = eq[eh++], qi = q % nx, qk = (q / nx) | 0;
+    if (qi > 0 && !barrier[q - 1] && !ext[q - 1]) { ext[q - 1] = 1; eq[et++] = q - 1; }
+    if (qi < nx - 1 && !barrier[q + 1] && !ext[q + 1]) { ext[q + 1] = 1; eq[et++] = q + 1; }
+    if (qk > 0 && !barrier[q - nx] && !ext[q - nx]) { ext[q - nx] = 1; eq[et++] = q - nx; }
+    if (qk < nz - 1 && !barrier[q + nx] && !ext[q + nx]) { ext[q + nx] = 1; eq[et++] = q + nx; }
+  }
+  const nearToe = 0.6 / s;
+  const cand = new Uint8Array(n);
+  for (let j = 0; j < n; j++) {
+    cand[j] = inside[j] && (pileObs[j] || (!obs[j] && (!ext[j] || dist[j] <= nearToe))) ? 1 : 0;
+  }
+
+  /* connected components */
+  const comp = new Int32Array(n).fill(-1), comps = [];
+  const queue = new Int32Array(n);
+  for (let j = 0; j < n; j++) {
+    if (!cand[j] || comp[j] >= 0) continue;
+    const id = comps.length; let qh = 0, qt = 0, score = 0, cnt = 0;
+    queue[qt++] = j; comp[j] = id;
+    while (qh < qt) {
+      const q = queue[qh++]; cnt++;
+      if (pileObs[q]) score += Z[q];
+      const qi = q % nx, qk = (q / nx) | 0;
+      if (qi > 0 && cand[q - 1] && comp[q - 1] < 0) { comp[q - 1] = id; queue[qt++] = q - 1; }
+      if (qi < nx - 1 && cand[q + 1] && comp[q + 1] < 0) { comp[q + 1] = id; queue[qt++] = q + 1; }
+      if (qk > 0 && cand[q - nx] && comp[q - nx] < 0) { comp[q - nx] = id; queue[qt++] = q - nx; }
+      if (qk < nz - 1 && cand[q + nx] && comp[q + nx] < 0) { comp[q + nx] = id; queue[qt++] = q + nx; }
+    }
+    comps.push({ id, score, cnt });
+  }
+  if (!comps.length) return { msg: { type: 'result', error: 'No pile found above the ground inside your walking loop.' }, transfer: [] };
+  comps.sort((a, b) => b.score - a.score);
+  const main = comps[0].id;
+  if (comps.length > 1 && comps[1].score > 0.1 * comps[0].score) warnings.push('Another heap or object inside your walking loop was left out of the volume.');
+  const region = new Uint8Array(n);
+  for (let j = 0; j < n; j++) region[j] = comp[j] === main ? 1 : 0;
+
+  /* light smoothing of measured heights: local plane fit (keeps slopes
+     unbiased, unlike a median), with a spike check first */
+  const Zs = new Float32Array(n);
+  const nb = new Float32Array(9), ndi = new Int8Array(9), ndk = new Int8Array(9);
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i;
+    if (!obs[j]) { Zs[j] = NaN; continue; }
+    if (!region[j]) { Zs[j] = Z[j]; continue; }
+    let c = 0;
+    for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
+      const ii = i + di, kk = k + dk; if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
+      const q = kk * nx + ii; if (obs[q]) { nb[c] = Z[q]; ndi[c] = di; ndk[c] = dk; c++; }
+    }
+    if (c < 5) { Zs[j] = Z[j]; continue; }
+    // plane z = a + b*di + e*dk by least squares; drop the worst point if it is a spike
+    let use = c, skip = -1;
+    for (let pass = 0; pass < 2; pass++) {
+      let S1 = 0, Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0, Sz = 0, Sxz = 0, Syz = 0;
+      for (let q = 0; q < c; q++) {
+        if (q === skip) continue;
+        const x = ndi[q], y = ndk[q], zz = nb[q];
+        S1++; Sx += x; Sy += y; Sxx += x * x; Syy += y * y; Sxy += x * y; Sz += zz; Sxz += x * zz; Syz += y * zz;
+      }
+      const sol = solve3([S1, Sx, Sy, Sx, Sxx, Sxy, Sy, Sxy, Syy], [Sz, Sxz, Syz]);
+      if (!sol) { Zs[j] = Z[j]; break; }
+      Zs[j] = sol[0];
+      if (pass === 0) {
+        let worst = -1, we = 0;
+        for (let q = 0; q < c; q++) { const e = Math.abs(nb[q] - (sol[0] + sol[1] * ndi[q] + sol[2] * ndk[q])); if (e > we) { we = e; worst = q; } }
+        if (we > 0.15 && use > 5) { skip = worst; use--; } else break;
+      }
+    }
+  }
+
+  /* fill unseen cells inside the pile (smooth membrane) */
+  const U = [];
+  for (let j = 0; j < n; j++) if (region[j] && !obs[j]) U.push(j);
+  const val = (q) => (obs[q] ? Zs[q] : (region[q] ? Zs[q] : 0));
+  for (const u of U) Zs[u] = NaN;
+  // initial fill by repeated neighbour averaging
+  let pending = U.slice(), guard = 0;
+  while (pending.length && guard++ < 400) {
+    const next = [], upd = [];
+    for (const u of pending) {
+      const ui = u % nx, uk = (u / nx) | 0; let sm = 0, c = 0;
+      const nbs = [ui > 0 ? u - 1 : -1, ui < nx - 1 ? u + 1 : -1, uk > 0 ? u - nx : -1, uk < nz - 1 ? u + nx : -1];
+      for (const q of nbs) { if (q < 0) { c++; continue; } const v = obs[q] ? Zs[q] : (region[q] ? Zs[q] : 0); if (v === v) { sm += v; c++; } }
+      if (c) upd.push([u, sm / c]); else next.push(u);
+    }
+    for (const [u, v] of upd) Zs[u] = v;
+    pending = next;
+  }
+  for (const u of pending) Zs[u] = 0;
+  for (let it = 0; it < 400 && U.length; it++) {
+    let md = 0;
+    for (const u of U) {
+      const ui = u % nx, uk = (u / nx) | 0;
+      const a = ui > 0 ? val(u - 1) : 0, b = ui < nx - 1 ? val(u + 1) : 0, c = uk > 0 ? val(u - nx) : 0, d = uk < nz - 1 ? val(u + nx) : 0;
+      const nv = Zs[u] + 1.85 * ((a + b + c + d) * 0.25 - Zs[u]);
+      md = Math.max(md, Math.abs(nv - Zs[u])); Zs[u] = nv;
+    }
+    if (md < 2e-4) break;
+  }
+  // then a thin-plate (biharmonic) fill: continues the slopes into the gap,
+  // so an unseen peak is rebuilt instead of being cut flat
+  if (U.length) biharmonicFill(U, Zs, obs, region, nx, nz);
+
+  /* volume and statistics. Gaps of up to ~25 cm between measured cells count
+     as interpolated (seen); anything further from a measurement is "unseen". */
+  const dObs = chamfer(obs, nx, nz), near = Math.max(1.5, 0.25 / s);
+  let V = 0, Vfill = 0, Vinterp = 0, area = 0, maxH = 0, nFoot = 0, nFootObs = 0, mx = 0, mz = 0;
+  for (let j = 0; j < n; j++) {
+    if (!region[j]) continue;
+    const z = Math.max(Zs[j], -0.05);
+    V += z * s * s;
+    const seen = dObs[j] <= near;
+    if (!obs[j]) { if (seen) Vinterp += Math.max(z, 0) * s * s; else Vfill += Math.max(z, 0) * s * s; }
+    if (z > zt) { nFoot++; if (seen) nFootObs++; mx += X0 + (j % nx) * s; mz += Z0 + ((j / nx) | 0) * s; }
+    if (z > maxH) maxH = z;
+  }
+  area = nFoot * s * s;
+  if (nFoot) { mx /= nFoot; mz /= nFoot; }
+  let cxx = 0, cxz = 0, czz = 0;
+  for (let j = 0; j < n; j++) if (region[j] && Zs[j] > zt) {
+    const x = X0 + (j % nx) * s - mx, z = Z0 + ((j / nx) | 0) * s - mz;
+    cxx += x * x; cxz += x * z; czz += z * z;
+  }
+  const ang = 0.5 * Math.atan2(2 * cxz, cxx - czz), ca = Math.cos(ang), sa = Math.sin(ang);
+  let a0 = 1e9, a1 = -1e9, b0 = 1e9, b1 = -1e9;
+  for (let j = 0; j < n; j++) if (region[j] && Zs[j] > zt) {
+    const x = X0 + (j % nx) * s - mx, z = Z0 + ((j / nx) | 0) * s - mz;
+    const u = x * ca + z * sa, v = -x * sa + z * ca;
+    if (u < a0) a0 = u; if (u > a1) a1 = u; if (v < b0) b0 = v; if (v > b1) b1 = v;
+  }
+  const len = Math.max(a1 - a0, b1 - b0) + s, wid = Math.min(a1 - a0, b1 - b0) + s;
+  const coverage = nFoot ? nFootObs / nFoot : 0;
+
+  // loop consistency: same ground seen at the start and the end of the walk
+  let lmS = 0, lmW = 0, lmN = 0;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const c = (k0 + k) * N + (i0 + i);
+    if (g.wA[c] >= 0.3 && g.wB[c] >= 0.3) {
+      const w = Math.min(g.wA[c], g.wB[c]);
+      lmS += w * Math.abs(g.hA[c] - g.hB[c]); lmW += w; lmN++;
+    }
+  }
+  const loopMis = lmN >= 20 ? lmS / lmW : null;
+
+  // ring just outside the pile: should sit on the base plane
+  const ring = new Uint8Array(n);
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i; if (region[j]) continue;
+    let near = false;
+    for (let dk = -3; dk <= 3 && !near; dk++) for (let di = -3; di <= 3; di++) {
+      const ii = i + di, kk = k + dk; if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
+      if (region[kk * nx + ii]) { near = true; break; }
+    }
+    if (near && obs[j]) ring[j] = 1;
+  }
+  let rS = 0, rS2 = 0, rN = 0;
+  for (let j = 0; j < n; j++) if (ring[j]) { rS += Z[j]; rS2 += Z[j] * Z[j]; rN++; }
+  const ringMean = rN ? rS / rN : 0, ringRms = rN ? Math.sqrt(Math.max(0, rS2 / rN)) : 0;
+
+  /* uncertainty, in plain terms: what could make the number wrong */
+  const relScale = opts.scaleFixed ? 0.003 : 0.015;
+  const eScale = 3 * relScale * V;
+  const eFill = 0.12 * Vfill + 0.02 * Vinterp;
+  const eBase = (Math.abs(ringMean) * 0.5 + (rN ? ringRms / Math.sqrt(rN) : 0.02) + 0.008) * area;
+  const eLoop = loopMis !== null ? 0.4 * loopMis * area : 0.02 * area;
+  const sigma = Math.sqrt(eScale * eScale + eFill * eFill + eBase * eBase + eLoop * eLoop);
+
+  if (progress < 0.95) warnings.push('The loop around the pile was not closed (' + Math.round(progress * 100) + '% of the way round). The unseen side was filled in by estimation.');
+  if (coverage < 0.85) warnings.push(Math.round((1 - coverage) * 100) + '% of the pile surface was not seen directly and was filled in.');
+  if (Math.abs(ringMean) > 0.08 || ringRms > 0.12) warnings.push('The ground around the pile is uneven or sloping, so the base level is less certain.');
+  if (loopMis !== null && loopMis > 0.08) warnings.push('Tracking drifted a little during the walk (' + Math.round(loopMis * 100) + ' cm mismatch where the loop closed).');
+  if (nPts < 300 && nDepthFrames < 30) warnings.push('Very little 3D data was collected.');
+
+  /* outputs for the 3D view */
+  const mask = new Uint8Array(n);
+  for (let j = 0; j < n; j++) mask[j] = (region[j] ? 1 : 0) | (dObs[j] <= near ? 2 : 0);
+  const Zout = new Float32Array(n);
+  for (let j = 0; j < n; j++) Zout[j] = region[j] ? Zs[j] : (obs[j] ? Z[j] : (dObs[j] <= near ? 0 : NaN));
+  const step = Math.max(1, Math.ceil(nPts / 25000));
+  const P = new Float32Array(Math.ceil(nPts / step) * 3); let pc = 0;
+  for (let q = 0; q < nPts; q += step) {
+    const x = pts[q * 4], y = pts[q * 4 + 1], z = pts[q * 4 + 2];
+    P[pc++] = x; P[pc++] = y - base(x, z); P[pc++] = z;
+  }
+  const pstep = Math.max(1, Math.ceil(nP / 600));
+  const path = new Float32Array(Math.ceil(nP / pstep) * 3); let qc = 0;
+  for (let q = 0; q < nP; q += pstep) {
+    const x = camPath[q * 5], y = camPath[q * 5 + 1], z = camPath[q * 5 + 2];
+    path[qc++] = x; path[qc++] = y - base(x, z); path[qc++] = z;
+  }
+  const result = {
+    type: 'result', volume: V, sigma, filledVolume: Vfill, footprint: area, maxHeight: maxH,
+    length: len, width: wid, coverage, progress, loopMismatch: loopMis, ground: { a: pl.a, b: pl.b, c: pl.c, rms: pl.rms, n: pl.nIn },
+    ringMean, ringRms, camHeight: camH, nPoints: nPts, nDepthFrames, nDepthSamples, duration: nP ? camPath[(nP - 1) * 5 + 3] - camPath[3] : 0,
+    flipMode, flipLocked, flipStats, warnings, zt,
+    parts: { scale: eScale, fill: eFill, base: eBase, loop: eLoop },
+    grid: { nx, nz, s, x0: X0, z0: Z0, Z: Zout, mask }, center: [mx, mz], points: P, path
+  };
+  return { msg: result, transfer: [Zout.buffer, mask.buffer, P.buffer, path.buffer] };
+}
+
+function state() {
+  return { started, flipMode, flipLocked, nPts, nTracks: tracks.length, nDepthFrames, frames: fr.R.length };
+}
+
+return { CFG, reset, processFrame, start, finish, state, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
+})();
+
+if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof importScripts === 'function') {
+  self.onmessage = function (e) {
+    const m = e.data;
+    try {
+      if (m.type === 'reset') { PSE.reset(m.cfg); self.postMessage({ type: 'ready' }); }
+      else if (m.type === 'frame') { const o = PSE.processFrame(m); self.postMessage(o.msg, o.transfer); }
+      else if (m.type === 'start') { PSE.start(m.center, m.t); }
+      else if (m.type === 'finish') { const o = PSE.finish(m.opts); self.postMessage(o.msg, o.transfer); }
+    } catch (err) {
+      self.postMessage({ type: 'error', message: String(err && err.stack || err) });
+    }
+  };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = PSE;
+</script>
+<script>
+/* ---------- shared WebGL helpers ---------- */
+const GLU = {
+  program(gl, vs, fs) {
+    const mk = (type, src) => {
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Shader: ' + gl.getShaderInfoLog(s));
+      return s;
+    };
+    const p = gl.createProgram();
+    gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Link: ' + gl.getProgramInfoLog(p));
+    p.u = {}; p.a = {};
+    const nu = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < nu; i++) { const inf = gl.getActiveUniform(p, i); p.u[inf.name.replace('[0]', '')] = gl.getUniformLocation(p, inf.name); }
+    const na = gl.getProgramParameter(p, gl.ACTIVE_ATTRIBUTES);
+    for (let i = 0; i < na; i++) { const inf = gl.getActiveAttrib(p, i); p.a[inf.name] = gl.getAttribLocation(p, inf.name); }
+    return p;
+  },
+  fbo(gl, w, h, withDepth) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    let rb = null;
+    if (withDepth) {
+      rb = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { fb, tex, rb, w, h };
+  },
+  quadBuffer(gl) {
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    return b;
+  }
+};
+
+/* mat4 helpers (column-major, like WebGL/WebXR) */
+const M4 = {
+  mul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s;
+    }
+    return o;
+  },
+  perspective(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far), o = new Float32Array(16);
+    o[0] = f / aspect; o[5] = f; o[10] = (far + near) * nf; o[11] = -1; o[14] = 2 * far * near * nf;
+    return o;
+  },
+  // world_from_cam (pose) from row-major R and C -> column-major 4x4
+  pose(R, C) {
+    return new Float32Array([R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, C[0], C[1], C[2], 1]);
+  },
+  invRigid(m) {
+    const o = new Float32Array(16);
+    o[0] = m[0]; o[1] = m[4]; o[2] = m[8]; o[4] = m[1]; o[5] = m[5]; o[6] = m[9]; o[8] = m[2]; o[9] = m[6]; o[10] = m[10];
+    o[12] = -(m[0] * m[12] + m[1] * m[13] + m[2] * m[14]);
+    o[13] = -(m[4] * m[12] + m[5] * m[13] + m[6] * m[14]);
+    o[14] = -(m[8] * m[12] + m[9] * m[13] + m[10] * m[14]);
+    o[15] = 1;
+    return o;
+  },
+  // pose matrix (column-major) -> row-major R, C
+  toRC(m) {
+    return { R: [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]], C: [m[12], m[13], m[14]] };
+  }
+};
+
+/* Camera image -> small grayscale image packed 4 pixels per RGBA texel.
+   Each gray pixel averages 4 bilinear taps (reduces aliasing). */
+class GrayPacker {
+  constructor(gl) {
+    this.gl = gl;
+    this.prog = GLU.program(gl,
+      'attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }',
+      `precision highp float;
+       uniform sampler2D uTex; uniform vec2 uSize; uniform vec2 uTap;
+       float lum(vec2 uv){ vec3 c = texture2D(uTex, uv).rgb; return dot(c, vec3(0.299,0.587,0.114)); }
+       float px(float x, float y){
+         vec2 uv = vec2(x / uSize.x, y / uSize.y);
+         return 0.25*(lum(uv+vec2(-uTap.x,-uTap.y))+lum(uv+vec2(uTap.x,-uTap.y))+lum(uv+vec2(-uTap.x,uTap.y))+lum(uv+vec2(uTap.x,uTap.y)));
+       }
+       void main(){
+         float fx = floor(gl_FragCoord.x); float y = gl_FragCoord.y;
+         gl_FragColor = vec4(px(4.0*fx+0.5,y), px(4.0*fx+1.5,y), px(4.0*fx+2.5,y), px(4.0*fx+3.5,y));
+       }`);
+    this.quad = GLU.quadBuffer(gl);
+    this.target = null;
+  }
+  ensure(w, h) {
+    if (this.target && this.target.w === w / 4 && this.target.h === h) return;
+    this.target = GLU.fbo(this.gl, w / 4, h, false);
+    this.buf = new Uint8Array(w * h);
+  }
+  // tex: WebGLTexture holding the camera image; srcW/srcH its size (for tap spacing)
+  grab(tex, w, h, srcW, srcH) {
+    const gl = this.gl; this.ensure(w, h);
+    const prevFb = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    const prevVp = gl.getParameter(gl.VIEWPORT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.target.fb);
+    gl.viewport(0, 0, w / 4, h);
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    gl.useProgram(this.prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(this.prog.u.uTex, 0);
+    gl.uniform2f(this.prog.u.uSize, w, h);
+    const sx = srcW ? Math.max(0.25, (srcW / w) * 0.25) / srcW : 0, sy = srcH ? Math.max(0.25, (srcH / h) * 0.25) / srcH : 0;
+    gl.uniform2f(this.prog.u.uTap, sx, sy);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
+    gl.enableVertexAttribArray(this.prog.a.aPos);
+    gl.vertexAttribPointer(this.prog.a.aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.disableVertexAttribArray(this.prog.a.aPos);
+    const out = new Uint8Array(w * h);
+    gl.readPixels(0, 0, w / 4, h, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, prevFb);
+    gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+    return out;
+  }
+}
+
+/* Draws the tracked dots (2D, image positions) and measured points (3D),
+   plus simple 3D lines/triangles (start flag, reference marks). */
+class DotRenderer {
+  constructor(gl) {
+    this.gl = gl;
+    this.prog = GLU.program(gl,
+      `attribute vec3 aPos; attribute vec4 aCol;
+       uniform mat4 uMVP; uniform float uIs2D; uniform float uSize;
+       varying vec4 vCol;
+       void main(){
+         vCol = aCol;
+         gl_Position = uIs2D > 0.5 ? vec4(aPos.xy, 0.0, 1.0) : uMVP * vec4(aPos, 1.0);
+         gl_PointSize = uSize;
+       }`,
+      `precision mediump float; varying vec4 vCol; uniform float uRound;
+       void main(){
+         if (uRound > 0.5) {
+           vec2 d = gl_PointCoord - 0.5; float r = length(d);
+           if (r > 0.5) discard;
+           float ring = smoothstep(0.30, 0.36, r);
+           gl_FragColor = vec4(mix(vCol.rgb, vec3(0.05), ring*0.85), vCol.a);
+         } else gl_FragColor = vCol;
+       }`);
+    this.bPos = gl.createBuffer(); this.bCol = gl.createBuffer();
+    this.bMapPos = gl.createBuffer(); this.mapCount = 0; this.mapCap = 0; this.mapData = new Float32Array(0);
+  }
+  _draw(mode, pos, col, count, mvp, is2D, size, round) {
+    const gl = this.gl, p = this.prog;
+    gl.useProgram(p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bPos); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(p.a.aPos); gl.vertexAttribPointer(p.a.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bCol); gl.bufferData(gl.ARRAY_BUFFER, col, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(p.a.aCol); gl.vertexAttribPointer(p.a.aCol, 4, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(p.u.uMVP, false, mvp || new Float32Array(16));
+    gl.uniform1f(p.u.uIs2D, is2D ? 1 : 0); gl.uniform1f(p.u.uSize, size); gl.uniform1f(p.u.uRound, round ? 1 : 0);
+    gl.drawArrays(mode, 0, count);
+    gl.disableVertexAttribArray(p.a.aPos); gl.disableVertexAttribArray(p.a.aCol);
+  }
+  // tracks: Float32Array [u,v,state,X,Y,Z,hasX]*n ; mapping image->NDC uses flip mode
+  drawTracks(tracks, w, h, flip, dpr) {
+    const n = tracks.length / 7; if (!n) return;
+    const pos = new Float32Array(n * 3), col = new Float32Array(n * 4);
+    const C = [[1.0, 0.18, 0.25, 0.95], [0.15, 0.55, 1.0, 0.95], [0.25, 0.95, 0.35, 0.95]];
+    for (let i = 0; i < n; i++) {
+      let uc = tracks[i * 7] + 0.5, vc = tracks[i * 7 + 1] + 0.5;
+      if (flip & 1) vc = h - vc; if (flip & 2) uc = w - uc;
+      pos[i * 3] = 2 * uc / w - 1; pos[i * 3 + 1] = 1 - 2 * vc / h;
+      const c = C[Math.max(0, Math.min(2, tracks[i * 7 + 2] | 0))];
+      col.set(c, i * 4);
+    }
+    const gl = this.gl;
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.DEPTH_TEST);
+    this._draw(gl.POINTS, pos, col, n, null, true, 9 * (dpr || 1), true);
+  }
+  addMapPoints(np) {
+    if (!np || !np.length) return;
+    const add = np.length / 4;
+    const need = (this.mapCount + add) * 3;
+    if (need > this.mapData.length) { const d = new Float32Array(Math.max(need, this.mapData.length * 2, 3000)); d.set(this.mapData.subarray(0, this.mapCount * 3)); this.mapData = d; }
+    for (let i = 0; i < add; i++) { this.mapData[(this.mapCount + i) * 3] = np[i * 4]; this.mapData[(this.mapCount + i) * 3 + 1] = np[i * 4 + 1]; this.mapData[(this.mapCount + i) * 3 + 2] = np[i * 4 + 2]; }
+    this.mapCount += add; this.mapDirty = true;
+  }
+  resetMap() { this.mapCount = 0; this.mapDirty = true; }
+  drawMap(mvp, dpr) {
+    if (!this.mapCount) return;
+    const gl = this.gl, p = this.prog, maxShow = 20000;
+    const start = Math.max(0, this.mapCount - maxShow), cnt = this.mapCount - start;
+    if (!this.mapCol || this.mapCol.length < cnt * 4) { this.mapCol = new Float32Array(Math.max(cnt, 4000) * 4); for (let i = 0; i < this.mapCol.length / 4; i++) this.mapCol.set([0.2, 0.95, 0.4, 0.55], i * 4); }
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.DEPTH_TEST);
+    this._draw(gl.POINTS, this.mapData.subarray(start * 3, this.mapCount * 3), this.mapCol.subarray(0, cnt * 4), cnt, mvp, false, 3.5 * (dpr || 1), true);
+  }
+  drawLines(verts, cols, mvp, mode) {
+    const gl = this.gl;
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.DEPTH_TEST);
+    this._draw(mode === undefined ? gl.LINES : mode, verts, cols, verts.length / 3, mvp, false, 1, false);
+  }
+}
+
+/* ---------- synthetic gravel pile: demo mode and automated accuracy tests ----------
+   Renders a textured pile with WebGL2 and walks a virtual phone around it, producing
+   the same inputs the AR mode gets from ARCore: pose, camera image and depth. */
+const SIM_DEG = Math.PI / 180;
+const SimWorld = {
+  pile(kind) {
+    const tanA = Math.tan(35 * SIM_DEG);
+    if (kind === 'cone') return (x, z) => Math.max(0, 3.4 - Math.hypot(x, z) * tanA);
+    if (kind === 'ridge') return (x, z) => {
+      const ax = Math.max(0, Math.abs(x) - 3.5), r = Math.hypot(ax, z);
+      return Math.max(0, Math.min(2.6, 3.1 - r * tanA));
+    };
+    return (x, z) => { // irregular heap: main cone + side lobe, rounded top, waviness
+      const r1 = Math.hypot(x, z), r2 = Math.hypot(x - 2.6, z + 1.4);
+      const a = 3.3 - r1 * tanA, b = 2.2 - r2 * tanA, k = 0.6, m = Math.max(a, b);
+      const sm = m + Math.log(Math.exp((a - m) / k) + Math.exp((b - m) / k)) * k - 0.35;
+      const wav = 0.06 * Math.sin(1.7 * x + 0.5) * Math.cos(1.3 * z - 0.2);
+      let h = sm + (sm > 0 ? wav * Math.min(1, sm) : 0);
+      if (h > 3.0) h = 3.0 + (h - 3.0) * 0.5;
+      return Math.max(0, h);
+    };
+  },
+  mesh(hf) {
+    const n = 241, L = 12, st = 2 * L / (n - 1);
+    const pos = new Float32Array(n * n * 3), nrm = new Float32Array(n * n * 3), H = new Float32Array(n * n);
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) H[k * n + i] = hf(-L + i * st, -L + k * st);
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) {
+      const j = k * n + i, x = -L + i * st, z = -L + k * st;
+      pos[j * 3] = x; pos[j * 3 + 1] = H[j]; pos[j * 3 + 2] = z;
+      const hl = H[k * n + Math.max(0, i - 1)], hr = H[k * n + Math.min(n - 1, i + 1)];
+      const hd = H[Math.max(0, k - 1) * n + i], hu = H[Math.min(n - 1, k + 1) * n + i];
+      let nx = (hl - hr) / (2 * st), ny = 1, nz = (hd - hu) / (2 * st); const l = Math.hypot(nx, ny, nz);
+      nrm[j * 3] = nx / l; nrm[j * 3 + 1] = ny / l; nrm[j * 3 + 2] = nz / l;
+    }
+    const idx = new Uint32Array((n - 1) * (n - 1) * 6); let q = 0, V = 0;
+    for (let k = 0; k < n - 1; k++) for (let i = 0; i < n - 1; i++) {
+      const a = k * n + i, b = a + 1, c = a + n, d = c + 1;
+      idx[q++] = a; idx[q++] = c; idx[q++] = d; idx[q++] = a; idx[q++] = d; idx[q++] = b;
+      V += st * st / 6 * (H[a] + H[d] + H[c] + H[a] + H[d] + H[b]);
+    }
+    return { pos, nrm, idx, truthVolume: V, hf, n, L, st, H };
+  },
+  heightAt(M, x, z) { // bilinear on the mesh grid (matches the rendered surface closely)
+    const fx = (x + M.L) / M.st, fz = (z + M.L) / M.st;
+    if (fx < 0 || fz < 0 || fx >= M.n - 1 || fz >= M.n - 1) return 0;
+    const i = fx | 0, k = fz | 0, ax = fx - i, az = fz - k, H = M.H, n = M.n;
+    return H[k * n + i] * (1 - ax) * (1 - az) + H[k * n + i + 1] * ax * (1 - az) + H[(k + 1) * n + i] * (1 - ax) * az + H[(k + 1) * n + i + 1] * ax * az;
+  },
+  castRay(M, o, d) {
+    let t = 0.05;
+    for (let it = 0; it < 500; it++) {
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t;
+      const gap = y - SimWorld.heightAt(M, x, z);
+      if (gap < 0.002) return t;
+      t += Math.max(0.004, gap / 1.8);
+      if (t > 60) return 0;
+    }
+    return 0;
+  }
+};
+
+const SIM_VS = `#version 300 es
+in vec3 aPos; in vec3 aNrm;
+uniform mat4 uVP; uniform mat4 uV;
+out vec3 vW; out vec3 vN; out float vD;
+void main(){ vW = aPos; vN = aNrm; vD = -(uV * vec4(aPos,1.0)).z; gl_Position = uVP * vec4(aPos,1.0); }`;
+const SIM_FS = `#version 300 es
+precision highp float;
+in vec3 vW; in vec3 vN; in float vD;
+uniform int uMode; uniform vec3 uSun;
+out vec4 o;
+float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+vec2 h22(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * vec3(.1031,.1030,.0973)); p3 += dot(p3, p3.yzx+33.33); return fract((p3.xx+p3.yz)*p3.zy); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(h12(i), h12(i+vec2(1,0)), u.x), mix(h12(i+vec2(0,1)), h12(i+vec2(1,1)), u.x), u.y); }
+float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ s += a*vn(p); p *= 2.03; a *= 0.5; } return s; }
+vec2 vor(vec2 x){ vec2 n = floor(x), f = fract(x); float m1 = 8.0, m2 = 8.0, id = 0.0;
+  for (int j=-1;j<=1;j++) for (int i=-1;i<=1;i++){ vec2 g = vec2(float(i),float(j)); vec2 r = g + h22(n+g) - f; float d = dot(r,r);
+    if (d < m1){ m2 = m1; m1 = d; id = h12(n+g); } else if (d < m2) m2 = d; }
+  return vec2(id, sqrt(m2) - sqrt(m1)); }
+void main(){
+  if (uMode == 1) {
+    float mm = floor(vD * 1000.0 + 0.5);
+    float r = floor(mm / 65536.0); float g = floor((mm - r*65536.0) / 256.0); float b = mm - r*65536.0 - g*256.0;
+    o = vec4(r/255.0, g/255.0, b/255.0, 1.0); return;
+  }
+  vec2 p = vW.xz + vec2(0.0, vW.y*0.35);
+  float px = length(fwidth(vW.xz));
+  float lod = smoothstep(0.01, 0.035, px);
+  vec2 v = vor(p * 24.0);
+  float peb = 0.55 + 0.42*(v.x-0.5) - 0.30*(1.0 - smoothstep(0.0, 0.10, v.y));
+  peb = mix(peb, 0.52, lod*0.85);
+  float big = (fbm(p*0.7)-0.5)*0.35 + (fbm(p*4.0)-0.5)*0.22;
+  vec3 gravel = vec3(0.72,0.68,0.62) * (peb + big);
+  vec2 v2 = vor(p * 7.0);
+  float gtx = 0.52 + 0.22*(v2.x-0.5) + (fbm(p*1.1)-0.5)*0.45 + (fbm(p*14.0)-0.5)*0.25*(1.0-lod);
+  vec3 ground = vec3(0.47,0.45,0.42) * gtx;
+  float pile = smoothstep(0.015, 0.07, vW.y);
+  vec3 alb = mix(ground, gravel, pile);
+  vec3 n = normalize(vN);
+  float dif = max(dot(n, normalize(uSun)), 0.0);
+  vec3 col = alb * (0.38 + 0.78*dif);
+  col = mix(col, vec3(0.78,0.84,0.92), smoothstep(45.0, 140.0, vD));
+  o = vec4(col, 1.0);
+}`;
+
+class SimSource {
+  constructor(opts) {
+    this.o = Object.assign({ kind: 'demo', speed: 1, walkTime: 100, R0: 9.0, depth: true, camera: true, test: false,
+      scaleErr: 0, drift: 0, yawDrift: 0, flipSim: 0, procH: 480, aspect: 0.45, depthNoise: 0.012, seed: 3 }, opts || {});
+    this.seed = this.o.seed;
+  }
+  rnd() { this.seed = (this.seed * 1664525 + 1013904223) >>> 0; return this.seed / 4294967296; }
+  gauss() { return Math.sqrt(-2 * Math.log(this.rnd() + 1e-12)) * Math.cos(2 * Math.PI * this.rnd()); }
+  init(canvas) {
+    this.canvas = canvas;
+    const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+    if (!gl) throw new Error('WebGL2 is not available for the demo.');
+    this.gl = gl;
+    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind));
+    this.truthVolume = this.world.truthVolume;
+    this.prog = GLU.program(gl, SIM_VS, SIM_FS);
+    const mk = (data, target) => { const b = gl.createBuffer(); gl.bindBuffer(target || gl.ARRAY_BUFFER, b); gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
+    this.bPos = mk(this.world.pos); this.bNrm = mk(this.world.nrm); this.bIdx = mk(this.world.idx, gl.ELEMENT_ARRAY_BUFFER);
+    this.nIdx = this.world.idx.length;
+    const G = 160, gp = new Float32Array([-G, -0.004, -G, G, -0.004, -G, -G, -0.004, G, G, -0.004, G]);
+    this.bGround = mk(gp); this.bGroundN = mk(new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]));
+    this.bGroundI = mk(new Uint32Array([0, 2, 3, 0, 3, 1]), gl.ELEMENT_ARRAY_BUFFER);
+    const H = this.o.procH, Wd = Math.round(H * this.o.aspect / 4) * 4;
+    this.procW = Wd; this.procH = H;
+    this.camFbo = GLU.fbo(gl, Wd * 2, H * 2, true);
+    this.dnx = Math.round(80 * this.o.aspect); this.dny = 80;
+    this.depthFbo = GLU.fbo(gl, this.dnx, this.dny, true);
+    this.packer = new GrayPacker(gl);
+    this.dots = new DotRenderer(gl);
+    this.vfov = 62 * SIM_DEG;
+    this.proj = M4.perspective(this.vfov, this.o.aspect, 0.1, 400);
+    this.p = [this.proj[0], this.proj[5], this.proj[8], this.proj[9]];
+  }
+  /* virtual walk: warm-up, then one loop plus overlap, slowing down at the end */
+  truePose(t) {
+    const o = this.o, warm = 1.5, T = o.walkTime;
+    const u = Math.max(0, Math.min(1, (t - warm) / T));
+    // speed ramps up, then halves over the last 12% (slowing down to close the loop)
+    const F = u <= 0.04 ? u * u / 0.08 : (u <= 0.88 ? 0.02 + (u - 0.04) : 0.86 + (u - 0.88) - (u - 0.88) * (u - 0.88) / 0.48);
+    const prog = 1.07 * F / 0.95;
+    const th = 0.4 + prog * 2 * Math.PI;
+    const r = o.R0 + 0.35 * Math.sin(3 * th + 1);
+    const C = [r * Math.cos(th), 1.45 + 0.025 * Math.sin(2 * Math.PI * t / 0.55), r * Math.sin(th)];
+    const T3 = [0.4 * Math.sin(0.37 * t), 1.05 + 0.18 * Math.sin(0.23 * t), 0.4 * Math.cos(0.29 * t)];
+    let fz = [C[0] - T3[0], C[1] - T3[1], C[2] - T3[2]]; let l = Math.hypot(...fz); fz = fz.map(v => v / l);
+    const roll = 2.5 * SIM_DEG * Math.sin(0.9 * t);
+    let up = [Math.sin(roll) * -fz[2], Math.cos(roll), Math.sin(roll) * fz[0]];
+    let fx = [up[1] * fz[2] - up[2] * fz[1], up[2] * fz[0] - up[0] * fz[2], up[0] * fz[1] - up[1] * fz[0]]; l = Math.hypot(...fx); fx = fx.map(v => v / l);
+    const fy = [fz[1] * fx[2] - fz[2] * fx[1], fz[2] * fx[0] - fz[0] * fx[2], fz[0] * fx[1] - fz[1] * fx[0]];
+    return { R: [fx[0], fy[0], fz[0], fx[1], fy[1], fz[1], fx[2], fy[2], fz[2]], C, prog, walking: t >= warm, done: u >= 1 };
+  }
+  /* what ARCore would report: optional scale error, drift and yaw drift */
+  reportedPose(tp, t) {
+    const o = this.o;
+    if (!o.scaleErr && !o.drift && !o.yawDrift) return { R: tp.R.slice(), C: tp.C.slice() };
+    if (!this._d) { this._d = [0, 0, 0]; this._lt = t; this._C0 = tp.C.slice(); }
+    const dt = Math.max(0, t - this._lt); this._lt = t;
+    for (let i = 0; i < 3; i++) this._d[i] += o.drift * Math.sqrt(dt) * this.gauss();
+    const s = 1 + o.scaleErr, C0 = this._C0;
+    let C = [C0[0] + (tp.C[0] - C0[0]) * s + this._d[0], C0[1] + (tp.C[1] - C0[1]) * s + this._d[1], C0[2] + (tp.C[2] - C0[2]) * s + this._d[2]];
+    const a = o.yawDrift * SIM_DEG * t, ca = Math.cos(a), sa = Math.sin(a);
+    const rx = C[0] - C0[0], rz = C[2] - C0[2];
+    C = [C0[0] + ca * rx + sa * rz, C[1], C0[2] - sa * rx + ca * rz];
+    const R = tp.R, Rr = [];
+    for (let c = 0; c < 3; c++) { const x = R[c], y = R[3 + c], z = R[6 + c]; Rr[c] = ca * x + sa * z; Rr[3 + c] = y; Rr[6 + c] = -sa * x + ca * z; }
+    return { R: Rr, C };
+  }
+  viewMatrices(R, C) {
+    const pose = M4.pose(R, C), view = M4.invRigid(pose);
+    return { view, vp: M4.mul(this.proj, view) };
+  }
+  drawScene(vp, view, mode) {
+    const gl = this.gl, p = this.prog;
+    gl.useProgram(p);
+    gl.uniformMatrix4fv(p.u.uVP, false, vp); gl.uniformMatrix4fv(p.u.uV, false, view);
+    gl.uniform1i(p.u.uMode, mode); gl.uniform3f(p.u.uSun, 0.45, 0.8, 0.35);
+    gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    const draw = (bp, bn, bi, cnt) => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, bp); gl.enableVertexAttribArray(p.a.aPos); gl.vertexAttribPointer(p.a.aPos, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bn); gl.enableVertexAttribArray(p.a.aNrm); gl.vertexAttribPointer(p.a.aNrm, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bi); gl.drawElements(gl.TRIANGLES, cnt, gl.UNSIGNED_INT, 0);
+    };
+    draw(this.bGround, this.bGroundN, this.bGroundI, 6);
+    draw(this.bPos, this.bNrm, this.bIdx, this.nIdx);
+    gl.disableVertexAttribArray(p.a.aPos); gl.disableVertexAttribArray(p.a.aNrm);
+  }
+  grabGray(tp) {
+    const gl = this.gl, { view, vp } = this.viewMatrices(tp.R, tp.C);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.camFbo.fb); gl.viewport(0, 0, this.camFbo.w, this.camFbo.h);
+    gl.clearColor(0.70, 0.80, 0.92, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.drawScene(vp, view, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    let g = this.packer.grab(this.camFbo.tex, this.procW, this.procH, this.camFbo.w, this.camFbo.h);
+    if (this.o.flipSim) g = flipImage(g, this.procW, this.procH, this.o.flipSim);
+    return g;
+  }
+  grabDepth(tp) {
+    const gl = this.gl, { view, vp } = this.viewMatrices(tp.R, tp.C), w = this.dnx, h = this.dny;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo.fb); gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.drawScene(vp, view, 1);
+    const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const out = new Float32Array(w * h), sn = this.o.depthNoise, lx = this.gauss(), ly = this.gauss();
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const q = ((h - 1 - j) * w + i) * 4;
+      let d = (px[q] * 65536 + px[q + 1] * 256 + px[q + 2]) / 1000;
+      if (d <= 0 || d > 8) { out[j * w + i] = 0; continue; }
+      const xn = 2 * (i + 0.5) / w - 1, yn = 1 - 2 * (j + 0.5) / h, sg = sn * d;
+      d = d + sg * this.gauss() + 0.5 * sg * (lx * xn + ly * yn);
+      out[j * w + i] = d;
+    }
+    return { nx: w, ny: h, data: out, p: this.p.slice() };
+  }
+  rayFromScreen(tp, sx, sy) {
+    const xn = 2 * sx - 1, yn = 1 - 2 * sy;
+    const dc = [(xn + this.p[2]) / this.p[0], (yn + this.p[3]) / this.p[1], -1], R = tp.R;
+    const d = [R[0] * dc[0] + R[1] * dc[1] + R[2] * dc[2], R[3] * dc[0] + R[4] * dc[1] + R[5] * dc[2], R[6] * dc[0] + R[7] * dc[1] + R[8] * dc[2]];
+    const l = Math.hypot(...d); return d.map(v => v / l);
+  }
+  hitAt(tp, sx, sy) {
+    const d = this.rayFromScreen(tp, sx, sy), t = SimWorld.castRay(this.world, tp.C, d);
+    if (!t) return null;
+    const P = [tp.C[0] + d[0] * t, tp.C[1] + d[1] * t, tp.C[2] + d[2] * t];
+    return { p: P, ground: SimWorld.heightAt(this.world, P[0], P[2]) < 0.02, dist: t };
+  }
+  intrinsics() {
+    const w = this.procW, h = this.procH, p = this.proj;
+    return { w, h, fx: p[0] * w / 2, fy: p[5] * h / 2, cx: w / 2 * (1 - p[8]), cy: h / 2 * (1 + p[9]) };
+  }
+  display(tp, tracksBuf, flip, vpReported) {
+    const gl = this.gl, c = this.canvas;
+    const { view, vp } = this.viewMatrices(tp.R, tp.C);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height);
+    gl.clearColor(0.70, 0.80, 0.92, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.drawScene(vp, view, 0);
+    const dpr = c.width / (c.clientWidth || c.width);
+    this.dots.drawMap(vpReported || vp, dpr);
+    if (tracksBuf) this.dots.drawTracks(tracksBuf, this.procW, this.procH, flip, dpr);
+    if (this.extraLines) this.dots.drawLines(this.extraLines.v, this.extraLines.c, vp, this.extraLines.mode);
+    return vp;
+  }
+}
+function flipImage(g, w, h, mode) {
+  const o = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const sy = (mode & 1) ? h - 1 - y : y, sx = (mode & 2) ? w - 1 - x : x;
+    o[y * w + x] = g[sy * w + sx];
+  }
+  return o;
+}
+
+/* ---------- capture controller (shared by AR mode and the simulated demo) ---------- */
+const TAU = Math.PI * 2;
+const $ = (id) => document.getElementById(id);
+
+const Overlay = {
+  show(isSim) {
+    $('ov').classList.remove('hidden');
+    $('ov').classList.toggle('sim', !!isSim);
+    this.setMain('START', false);
+    $('ov-ref').textContent = 'Mark A'; $('ov-ref').classList.add('hidden');
+    this.setMsg('Starting…', 'info', 0);
+  },
+  hide() { $('ov').classList.add('hidden'); },
+  setMsg(text, kind, arrow) {
+    const el = $('ov-msg');
+    if (el._t !== text) { el.textContent = text; el._t = text; }
+    el.className = 'ov-msg ' + (kind || 'info');
+    const a = $('ov-arrow');
+    if (arrow) { a.classList.remove('hidden'); a.style.transform = 'translate(-50%,-50%) rotate(' + arrow + 'deg)'; }
+    else a.classList.add('hidden');
+  },
+  setMain(label, enabled, cls) {
+    const b = $('ov-main'); b.textContent = label; b.disabled = !enabled;
+    b.className = 'ov-main' + (cls ? ' ' + cls : '');
+  },
+  setStats(text) { const el = $('ov-stats'); if (!el.classList.contains('hidden')) el.textContent = text; },
+  ring(sectors, progress, dir, closed) {
+    const c = $('ov-ring'), g = c.getContext('2d'), W = c.width, cx = W / 2, cy = W / 2, r = W * 0.40;
+    g.clearRect(0, 0, W, W);
+    g.lineWidth = W * 0.085; g.lineCap = 'butt';
+    for (let i = 0; i < 36; i++) {
+      const a0 = -Math.PI / 2 + (dir < 0 ? -1 : 1) * (i / 36) * TAU, a1 = a0 + (dir < 0 ? -1 : 1) * (TAU / 36) * 0.86;
+      const n = sectors[i];
+      g.strokeStyle = n >= 4 ? '#3ddc84' : (n > 0 ? '#ffb020' : 'rgba(255,255,255,0.18)');
+      g.beginPath(); if (dir < 0) g.arc(cx, cy, r, a1, a0); else g.arc(cx, cy, r, a0, a1); g.stroke();
+    }
+    // start mark
+    g.fillStyle = '#ffd400';
+    g.beginPath(); g.moveTo(cx, cy - r - W * 0.10); g.lineTo(cx - W * 0.05, cy - r - W * 0.17); g.lineTo(cx + W * 0.05, cy - r - W * 0.17); g.closePath(); g.fill();
+    // current position
+    const a = -Math.PI / 2 + (dir < 0 ? -1 : 1) * Math.min(progress, 1.2) * TAU;
+    g.fillStyle = closed ? '#3ddc84' : '#ffffff';
+    g.beginPath(); g.arc(cx + r * Math.cos(a), cy + r * Math.sin(a), W * 0.06, 0, TAU); g.fill();
+    g.strokeStyle = '#111'; g.lineWidth = W * 0.015; g.stroke();
+    $('ov-pct').textContent = Math.min(100, Math.round(progress * 100)) + '%';
+  },
+  mini(m, path, cam, fwd, start) {
+    const c = $('ov-mini'), g = c.getContext('2d'), W = c.width;
+    g.clearRect(0, 0, W, W);
+    g.fillStyle = 'rgba(10,12,14,0.55)'; g.fillRect(0, 0, W, W);
+    if (!m) return;
+    if (!this._mc || this._mc.width !== m.S) { this._mc = document.createElement('canvas'); this._mc.width = this._mc.height = m.S; }
+    this._mc.getContext('2d').putImageData(new ImageData(m.rgba, m.S, m.S), 0, 0);
+    g.imageSmoothingEnabled = false; g.drawImage(this._mc, 0, 0, W, W);
+    const P = (x, z) => [(x - m.x0) / m.size * W, (z - m.z0) / m.size * W];
+    if (path.length > 2) {
+      g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 2; g.beginPath();
+      for (let i = 0; i < path.length; i += 2) { const p = P(path[i], path[i + 1]); if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }
+      g.stroke();
+    }
+    if (start) { const p = P(start[0], start[2]); g.fillStyle = '#ffd400'; g.fillRect(p[0] - 1.5, p[1] - 12, 3, 12); g.beginPath(); g.moveTo(p[0] + 1.5, p[1] - 12); g.lineTo(p[0] + 10, p[1] - 9); g.lineTo(p[0] + 1.5, p[1] - 6); g.fill(); }
+    if (cam) {
+      const p = P(cam[0], cam[2]), a = Math.atan2(fwd[2], fwd[0]);
+      g.save(); g.translate(p[0], p[1]); g.rotate(a);
+      g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(11, 0); g.lineTo(-6, -6); g.lineTo(-3, 0); g.lineTo(-6, 6); g.closePath(); g.fill();
+      g.restore();
+    }
+    g.fillStyle = 'rgba(255,255,255,0.85)'; g.font = (W * 0.07) + 'px system-ui'; g.fillText('peak ' + m.maxH.toFixed(1) + ' m', 6, W - 8);
+  }
+};
+
+class Capture {
+  constructor(ui) { this.ui = ui; }
+  makeWorker() {
+    const src = $('engine-src').textContent;
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const w = new Worker(url);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return w;
+  }
+  begin(source, meta, opts) {
+    this.source = source; this.meta = meta; this.opts = opts || {};
+    this.worker = this.makeWorker();
+    this.worker.onmessage = (e) => this.onWorker(e.data);
+    this.worker.onerror = (e) => { console.error(e); this.ui.onError('Engine error: ' + (e.message || e)); };
+    this.worker.postMessage({ type: 'reset', cfg: this.opts.cfg || {} });
+    Object.assign(this, {
+      busy: false, lastSubmit: -1, phase: 'warmup', t0: null, tracks: null, flip: 1, flipLocked: false,
+      center: null, cum: 0, lastAng: null, progress: 0, dir: 0, sectors: new Uint16Array(36), startAng: 0,
+      speed: 0, angSpeed: 0, lastC: null, lastT: null, lastF: null, closedNotified: false, stats: null, mini: null,
+      path: [], lastPathT: -1, refA: null, refB: null, startC: null, groundYs: [], lowSince: null, trackingLost: false,
+      lastGuide: -1, idleWaiters: [], resultWaiter: null, lastR: null, nearDist: null, finished: false, frames: 0
+    });
+    this.recorder = this.opts.record ? new Recorder() : null;
+    Overlay.show(source.isSim);
+    $('ov-ref').onclick = () => this.markRef();
+    $('ov-main').onclick = () => { if (this.phase === 'warmup') this.startWalk(); else if (this.phase === 'walk') this.finish(); };
+    $('ov-close').onclick = () => this.abort();
+  }
+  fwd(R) { return [-R[2], -R[5], -R[8]]; }
+  /* called once per displayed frame by the source; returns true if a frame should be processed */
+  frame(info) {
+    const t = info.t;
+    if (this.t0 === null) this.t0 = t;
+    this.trackingLost = !info.tracking;
+    if (info.tracking && info.C) {
+      const C = info.C, F = this.fwd(info.R);
+      if (this.lastC) {
+        const dt = Math.max(1e-3, t - this.lastT);
+        const v = Math.hypot(C[0] - this.lastC[0], C[2] - this.lastC[2]) / dt;
+        const dA = Math.acos(Math.max(-1, Math.min(1, F[0] * this.lastF[0] + F[1] * this.lastF[1] + F[2] * this.lastF[2]))) / dt * 180 / Math.PI;
+        const k = Math.min(1, dt / 0.6);
+        this.speed += (v - this.speed) * k; this.angSpeed += (dA - this.angSpeed) * k;
+      }
+      this.lastC = C; this.lastT = t; this.lastF = F; this.lastR = info.R;
+      if (this.phase === 'walk') {
+        this.updateLoop(C);
+        if (t - this.lastPathT > 0.2) { this.path.push(C[0], C[2]); this.lastPathT = t; }
+      }
+      if (info.nearDist !== undefined) this.nearDist = info.nearDist;
+    }
+    if (t - this.lastGuide > 0.12) { this.lastGuide = t; this.guide(t); }
+    return info.tracking && !this.busy && (t - this.lastSubmit) >= 0.062 && this.phase !== 'finishing' && this.phase !== 'done';
+  }
+  submit(fr) {
+    this.busy = true; this.lastSubmit = fr.t; this.frames++;
+    const msg = { type: 'frame', t: fr.t, R: fr.R, C: fr.C, intr: fr.intr, progress: this.progress, hits: fr.hits || null };
+    const tr = [];
+    if (fr.gray) { msg.gray = fr.gray.buffer; }
+    if (fr.depth) { msg.depth = fr.depth; }
+    if (this.recorder) this.recorder.add(fr, this.progress);
+    if (msg.gray) tr.push(msg.gray);
+    if (msg.depth) tr.push(msg.depth.data.buffer);
+    this.worker.postMessage(msg, tr);
+  }
+  waitIdle() { return this.busy ? new Promise(r => this.idleWaiters.push(r)) : Promise.resolve(); }
+  onWorker(m) {
+    if (m.type === 'tracks') {
+      this.busy = false;
+      this.tracks = m.tracks; this.flip = m.flipMode; this.flipLocked = m.flipLocked; this.stats = m.stats;
+      if (m.newPts && m.newPts.length && this.source.dots) this.source.dots.addMapPoints(m.newPts);
+      if (m.mini) {
+        this.mini = m.mini;
+        if (m.mini.centerEst && this.phase === 'walk') this.refineCenter(m.mini.centerEst);
+        if (this.mini.groundY !== undefined) this.groundY = this.mini.groundY;
+        Overlay.mini(this.mini, this.path, this.lastC, this.lastF || [0, 0, -1], this.startC);
+      }
+      const w = this.idleWaiters; this.idleWaiters = []; w.forEach(f => f());
+    } else if (m.type === 'result') {
+      if (this.resultWaiter) this.resultWaiter(m);
+      this.onResult(m);
+    } else if (m.type === 'error') {
+      console.error('engine:', m.message);
+      this.busy = false;
+      const w = this.idleWaiters; this.idleWaiters = []; w.forEach(f => f());
+    }
+  }
+  updateLoop(C) {
+    const a = Math.atan2(C[2] - this.center.z, C[0] - this.center.x);
+    if (this.lastAng === null) { this.lastAng = a; this.startAng = a; return; }
+    let d = a - this.lastAng;
+    while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
+    this.lastAng = a;
+    if (Math.abs(d) > 0.6) return;
+    this.cum += d;
+    this.progress = Math.abs(this.cum) / TAU;
+    if (Math.abs(this.cum) > 0.15) this.dir = Math.sign(this.cum);
+    const rel = (((a - this.startAng) * (this.dir || 1)) % TAU + TAU) % TAU;
+    this.sectors[Math.floor(rel / TAU * 36) % 36]++;
+  }
+  refineCenter(est) {
+    const dx = est[0] - this.center.x, dz = est[1] - this.center.z;
+    if (Math.hypot(dx, dz) > 25) return;
+    this.center = { x: this.center.x + 0.1 * dx, z: this.center.z + 0.1 * dz };
+    if (this.lastC) this.lastAng = Math.atan2(this.lastC[2] - this.center.z, this.lastC[0] - this.center.x);
+  }
+  centerPoint() {
+    const h = this.source.centerHit && this.source.centerHit();
+    if (h && h.p) return h.p;
+    const C = this.lastC || [0, 0, 0], F = this.lastF || [0, 0, -1], l = Math.hypot(F[0], F[2]) || 1;
+    return [C[0] + F[0] / l * 6, C[1] - 1.2, C[2] + F[2] / l * 6];
+  }
+  startWalk() {
+    if (this.phase !== 'warmup' || !this.lastC) return;
+    const c = this.centerPoint();
+    this.center = { x: c[0], z: c[2] };
+    this.worker.postMessage({ type: 'start', center: c, t: this.lastT });
+    if (this.recorder) this.recorder.event('start', { center: c, t: this.lastT });
+    this.phase = 'walk'; this.startT = this.lastT; this.startC = this.lastC.slice();
+    this.cum = 0; this.lastAng = null; this.progress = 0;
+    Overlay.setMain('FINISH', true);
+    $('ov-ref').classList.remove('hidden');
+    if (navigator.vibrate) navigator.vibrate(40);
+  }
+  markRef() {
+    const h = this.source.centerHit && this.source.centerHit();
+    if (!h || !h.p) { Overlay.setMsg('Aim the centre dot at the marker on the ground and try again', 'warn', 0); return; }
+    if (!this.refA || this.refB) { this.refA = h.p.slice(); this.refB = null; $('ov-ref').textContent = 'Mark B'; }
+    else { this.refB = h.p.slice(); $('ov-ref').textContent = 'A–B ' + Math.hypot(this.refA[0] - this.refB[0], this.refA[1] - this.refB[1], this.refA[2] - this.refB[2]).toFixed(2) + ' m'; }
+    if (navigator.vibrate) navigator.vibrate(25);
+  }
+  guide(t) {
+    let msg = '', kind = 'info', arrow = 0;
+    const st = this.stats;
+    const lowTracks = st && st.nTracks < 40;
+    if (lowTracks) { if (this.lowSince === null) this.lowSince = t; } else this.lowSince = null;
+    if (this.trackingLost) { msg = 'Tracking lost — hold still and point at the pile'; kind = 'warn'; }
+    else if (this.phase === 'warmup') {
+      if (t - this.t0 < 2.5) msg = 'Move the phone gently left and right to start tracking';
+      else { msg = 'Aim the centre dot at the middle of the pile, then tap START'; kind = 'go'; Overlay.setMain('START', true, 'go'); }
+    } else if (this.phase === 'walk') {
+      const p = this.progress;
+      if (this.speed > 1.15) { msg = 'Slow down — walk slowly'; kind = 'warn'; }
+      else if (this.angSpeed > 75) { msg = 'Turn the phone more slowly'; kind = 'warn'; }
+      else if (this.lowSince !== null && t - this.lowSince > 1.2) { msg = 'Not enough detail — keep the pile in view'; kind = 'warn'; }
+      else if (this.nearDist !== null && this.nearDist < 1.3) { msg = 'Step back — keep the whole pile and some ground in view'; kind = 'warn'; }
+      else if (p >= 1.04) {
+        msg = 'Loop closed ✓  Tap FINISH'; kind = 'ok';
+        if (!this.closedNotified) { this.closedNotified = true; if (navigator.vibrate) navigator.vibrate([60, 60, 60]); Overlay.setMain('FINISH', true, 'go'); }
+      } else if (p >= 0.86) {
+        msg = 'Almost back at the start — slow down'; kind = 'slow';
+        if (this.startC && this.lastC && this.lastF) {
+          const dx = this.startC[0] - this.lastC[0], dz = this.startC[2] - this.lastC[2];
+          const fx = this.lastF[0], fz = this.lastF[2];
+          arrow = Math.atan2(fx * dz - fz * dx, fx * dx + fz * dz) * 180 / Math.PI - 90;
+        }
+      } else if (t - this.startT < 5) msg = 'Walk slowly around the pile. Keep the whole pile and some ground in view';
+      else msg = 'Keep walking around the pile';
+    }
+    Overlay.setMsg(msg, kind, arrow);
+    if (this.phase === 'walk' || this.phase === 'warmup') Overlay.ring(this.sectors, this.progress, this.dir, this.progress >= 1.04);
+    if (st) Overlay.setStats(`tracked ${st.nTracks} · locked ${st.nGreen} · 3D pts ${st.nPts} · depth frames ${st.nDepthFrames} · ${st.ms.toFixed(0)} ms/frame · image ${this.flipLocked ? 'ok' : 'checking'}(${this.flip})` +
+      ` · ${this.speed.toFixed(2)} m/s` + (this.source.featInfo ? ' · ' + this.source.featInfo : ''));
+  }
+  /* in-overlay "tap again to confirm" (browser dialogs may not show during AR) */
+  armed(key, label, msg) {
+    const now = performance.now();
+    if (this._arm && this._arm.key === key && now - this._arm.t < 5000) { this._arm = null; return true; }
+    this._arm = { key, t: now };
+    if (label) Overlay.setMain(label, true, 'warn');
+    Overlay.setMsg(msg, 'warn', 0); this.lastGuide = this.lastT + 2.5;
+    setTimeout(() => { if (this._arm && this._arm.key === key && this.phase === 'walk') { this._arm = null; Overlay.setMain('FINISH', true, this.closedNotified ? 'go' : ''); } }, 5100);
+    return false;
+  }
+  finish() {
+    if (this.phase !== 'walk') return;
+    if (this.progress < 0.9 && !this.source.isTest && !this.armed('finish', 'FINISH NOW?', 'Only ' + Math.round(this.progress * 100) + '% of the way round — tap FINISH NOW? again to finish anyway')) return;
+    this.phase = 'finishing';
+    Busy.show('Calculating volume…');
+    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress } });
+    if (this.busy) this.waitIdle().then(send); else send();
+    if (this.source.stop) this.source.stop();
+  }
+  finishAndWait() { return new Promise(res => { this.resultWaiter = res; this.finish(); }); }
+  onResult(r) {
+    this.phase = 'done';
+    Busy.hide(); Overlay.hide();
+    try { this.worker.terminate(); } catch (e) { }
+    const extra = {
+      meta: this.meta, refA: this.refA, refB: this.refB, progress: this.progress,
+      truth: this.source.truthVolume || null, source: this.source.isSim ? 'demo' : 'ar',
+      features: this.source.feat || null, recorder: this.recorder
+    };
+    this.ui.onResult(r, extra);
+  }
+  abortExternal() {
+    // AR session closed by the system or the back button
+    this.phase = 'done';
+    try { this.worker.terminate(); } catch (e) { }
+    Overlay.hide(); Busy.hide();
+    this.ui.onExit('The AR session was closed.');
+  }
+  abort() {
+    if (this.phase === 'walk' && !this.armed('abort', null, 'Tap ✕ again to cancel this measurement')) return;
+    this.phase = 'done';
+    try { this.worker.terminate(); } catch (e) { }
+    if (this.source.stop) this.source.stop();
+    Overlay.hide(); Busy.hide();
+    this.ui.onExit();
+  }
+}
+
+const Busy = {
+  show(msg) { $('busy-msg').textContent = msg; $('busy').classList.remove('hidden'); },
+  hide() { $('busy').classList.add('hidden'); }
+};
+
+/* ---------- demo runner (interactive) and deterministic test runner ---------- */
+const SimRunner = {
+  interactive(capture, sim) {
+    sim.isSim = true; sim.running = true;
+    let simT = 0, last = performance.now(), lastHit = -1;
+    sim.centerHit = () => sim._tp ? sim.hitAt(sim._tp, 0.5, 0.5) : null;
+    sim.stop = () => { sim.running = false; $('sim-stage').classList.add('hidden'); };
+    const stage = $('sim-stage'); stage.classList.remove('hidden');
+    const resize = () => {
+      const c = sim.canvas, r = stage.getBoundingClientRect(), a = sim.o.aspect;
+      let w = r.width, h = r.height; if (w / h > a) w = h * a; else h = w / a;
+      c.style.width = w + 'px'; c.style.height = h + 'px';
+      const d = Math.min(2, window.devicePixelRatio || 1); c.width = Math.round(w * d); c.height = Math.round(h * d);
+    };
+    resize(); window.addEventListener('resize', resize);
+    const loop = (now) => {
+      if (!sim.running) { window.removeEventListener('resize', resize); return; }
+      const dt = Math.min(0.05, (now - last) / 1000) * sim.o.speed; last = now; simT += dt;
+      const tp = sim.truePose(simT); sim._tp = tp;
+      const rp = sim.reportedPose(tp, simT);
+      const ch = sim.hitAt(tp, 0.5, 0.5);
+      const want = capture.frame({ t: simT, R: rp.R, C: rp.C, tracking: true, nearDist: ch ? ch.dist : null });
+      if (capture.phase === 'warmup' && simT > 2.2) capture.startWalk();
+      if (want) {
+        const gray = sim.grabGray(tp);
+        const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
+        let hits = null;
+        if (simT - lastHit > 0.25) { lastHit = simT; const h = sim.hitAt(tp, 0.5, 0.86); if (h && h.ground) hits = [h.p]; }
+        capture.submit({ t: simT, R: rp.R, C: rp.C, intr: sim.intrinsics(), gray, depth, hits });
+      }
+      if (capture.phase === 'walk' && tp.done) { capture.finish(); return; }
+      const vpRep = sim.viewMatrices(rp.R, rp.C).vp;
+      sim.display(tp, capture.flipLocked ? capture.tracks : capture.tracks, capture.flip, vpRep);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  },
+  async test(capture, sim, log) {
+    sim.isSim = true; sim.isTest = true;
+    sim.centerHit = () => sim._tp ? sim.hitAt(sim._tp, 0.5, 0.5) : null;
+    const fps = 15; let f = 0, lastHit = -1;
+    const t0 = performance.now();
+    for (;;) {
+      const t = f / fps; f++;
+      const tp = sim.truePose(t); sim._tp = tp;
+      const rp = sim.reportedPose(tp, t);
+      capture.frame({ t, R: rp.R, C: rp.C, tracking: true });
+      capture.busy = false;
+      if (capture.phase === 'warmup' && t >= 2.0) capture.startWalk();
+      const gray = sim.o.camera ? sim.grabGray(tp) : null;
+      const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
+      let hits = null;
+      if (t - lastHit > 0.25) { lastHit = t; const h = sim.hitAt(tp, 0.5, 0.86); if (h && h.ground) hits = [h.p]; }
+      capture.submit({ t, R: rp.R, C: rp.C, intr: sim.intrinsics(), gray, depth, hits });
+      await capture.waitIdle();
+      if (log && f % 150 === 0) log(`t=${t.toFixed(1)} prog=${capture.progress.toFixed(2)} ` + JSON.stringify(capture.stats) + ` ${((performance.now() - t0) / 1000).toFixed(0)}s`);
+      if (capture.phase === 'walk' && tp.done) break;
+    }
+    return await capture.finishAndWait();
+  }
+};
+
+/* ---------- AR source: Chrome on Android (ARCore) via WebXR ----------
+   Gives metric 6-DoF poses (gravity aligned), the camera image (camera-access),
+   depth-from-motion (depth-sensing) and hit tests on detected surfaces. */
+class XRSource {
+  static async supported() {
+    try { return !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')); } catch (e) { return false; }
+  }
+  constructor(opts) { this.o = opts || {}; this.isSim = false; this.ended = false; this.lastGroundT = -1; this.lastCenterHit = null; }
+  async start(capture) {
+    this.cap = capture;
+    const root = $('ov');
+    const session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['local'],
+      optionalFeatures: ['camera-access', 'depth-sensing', 'dom-overlay', 'hit-test'],
+      domOverlay: { root },
+      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'] }
+    });
+    this.session = session;
+    root.addEventListener('beforexrselect', (e) => e.preventDefault());
+    const canvas = document.createElement('canvas');
+    let gl = canvas.getContext('webgl2', { xrCompatible: true, alpha: true, antialias: false, preserveDrawingBuffer: false });
+    if (!gl) gl = canvas.getContext('webgl', { xrCompatible: true, alpha: true, antialias: false });
+    this.gl = gl;
+    if (gl.makeXRCompatible) { try { await gl.makeXRCompatible(); } catch (e) { } }
+    session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl, { alpha: true, antialias: false }) });
+    this.ref = await session.requestReferenceSpace('local');
+    this.viewerSpace = await session.requestReferenceSpace('viewer');
+    const en = session.enabledFeatures ? Array.from(session.enabledFeatures) : ['camera-access', 'depth-sensing', 'hit-test', 'dom-overlay'];
+    let depthOk = en.includes('depth-sensing');
+    try { if (depthOk && session.depthUsage !== 'cpu-optimized') depthOk = false; } catch (e) { depthOk = false; }
+    this.feat = {
+      camera: en.includes('camera-access') && typeof XRWebGLBinding !== 'undefined',
+      depth: depthOk, hit: en.includes('hit-test'), overlay: en.includes('dom-overlay')
+    };
+    this.featInfo = 'cam ' + (this.feat.camera ? '✓' : '✗') + ' depth ' + (this.feat.depth ? '✓' : '✗') + ' hit ' + (this.feat.hit ? '✓' : '✗');
+    if (this.feat.camera) { try { this.binding = new XRWebGLBinding(session, gl); } catch (e) { this.feat.camera = false; } }
+    if (this.feat.hit) {
+      const req = async (opt) => { try { return await session.requestHitTestSource(opt); } catch (e) { return null; } };
+      this.hitCenter = await req({ space: this.viewerSpace, entityTypes: ['plane', 'point'] }) || await req({ space: this.viewerSpace });
+      const down = new XRRay({ x: 0, y: 0, z: 0, w: 1 }, { x: 0, y: -0.6, z: -1, w: 0 });
+      this.hitGround = await req({ space: this.viewerSpace, offsetRay: down, entityTypes: ['plane'] }) || await req({ space: this.viewerSpace, offsetRay: down });
+    }
+    if (!this.feat.camera && !this.feat.depth) {
+      session.end();
+      throw new Error('This phone/browser did not grant camera access or depth in AR, so nothing can be measured. Update Chrome and Google Play Services for AR, and allow camera access.');
+    }
+    this.packer = new GrayPacker(gl);
+    this.dots = new DotRenderer(gl);
+    session.addEventListener('end', () => { this.ended = true; if (this.cap.phase === 'walk' || this.cap.phase === 'warmup') this.cap.abortExternal(); });
+    session.requestAnimationFrame((t, f) => this.onFrame(t, f));
+    return this.feat;
+  }
+  centerHit() { return this.lastCenterHit; }
+  stop() { if (!this.ended && this.session) { this.ended = true; try { this.session.end(); } catch (e) { } } }
+  onFrame(time, frame) {
+    if (this.ended) return;
+    const s = this.session;
+    s.requestAnimationFrame((t, f) => this.onFrame(t, f));
+    const gl = this.gl, layer = s.renderState.baseLayer;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const t = time / 1000;
+    const pose = frame.getViewerPose(this.ref);
+    if (!pose) { this.cap.frame({ t, tracking: false }); return; }
+    const view = pose.views[0], vp = layer.getViewport(view);
+    gl.viewport(vp.x, vp.y, vp.width, vp.height);
+    const m = view.transform.matrix, { R, C } = M4.toRC(m), P = view.projectionMatrix;
+    // centre hit (pile surface) and ground hits
+    let centerHit = null;
+    if (this.hitCenter) {
+      const r = frame.getHitTestResults(this.hitCenter);
+      if (r.length) { const hp = r[0].getPose(this.ref); if (hp) { const q = hp.transform.position; centerHit = { p: [q.x, q.y, q.z] }; } }
+    }
+    let depthInfo = null;
+    if (this.feat.depth) { try { depthInfo = frame.getDepthInformation(view); } catch (e) { depthInfo = null; } }
+    if (depthInfo) {
+      // depth at the screen centre is a better "what am I looking at" than plane hits
+      const d = depthInfo.getDepthInMeters(0.5, 0.5);
+      if (d > 0.3) {
+        const dc = [P[8] / P[0] * d, P[9] / P[5] * d, -d];
+        centerHit = { p: [R[0] * dc[0] + R[1] * dc[1] + R[2] * dc[2] + C[0], R[3] * dc[0] + R[4] * dc[1] + R[5] * dc[2] + C[1], R[6] * dc[0] + R[7] * dc[1] + R[8] * dc[2] + C[2]], dist: d };
+      }
+    }
+    if (centerHit) { if (!centerHit.dist) centerHit.dist = Math.hypot(centerHit.p[0] - C[0], centerHit.p[1] - C[1], centerHit.p[2] - C[2]); this.lastCenterHit = centerHit; }
+    let hits = null;
+    if (this.hitGround && t - this.lastGroundT > 0.25) {
+      this.lastGroundT = t;
+      const r = frame.getHitTestResults(this.hitGround);
+      if (r.length) {
+        const hp = r[0].getPose(this.ref);
+        if (hp && hp.transform.matrix[5] > 0.93) { const q = hp.transform.position; hits = [[q.x, q.y, q.z]]; }
+      }
+    }
+    const want = this.cap.frame({ t, R, C, tracking: !pose.emulatedPosition, nearDist: centerHit ? centerHit.dist : null });
+    const aspect = vp.width / vp.height, H = 480, W = Math.max(4, Math.round(H * aspect / 4) * 4);
+    if (want) {
+      const intr = { w: W, h: H, fx: P[0] * W / 2, fy: P[5] * H / 2, cx: W / 2 * (1 - P[8]), cy: H / 2 * (1 + P[9]) };
+      let gray = null, depth = null;
+      if (this.feat.camera && view.camera) {
+        try {
+          const tex = this.binding.getCameraImage(view.camera);
+          if (tex) gray = this.packer.grab(tex, W, H, view.camera.width, view.camera.height);
+          this.camSize = view.camera.width + 'x' + view.camera.height;
+        } catch (e) { console.warn('camera image', e); }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+        gl.viewport(vp.x, vp.y, vp.width, vp.height);
+      }
+      if (depthInfo && this.cap.phase === 'walk') {
+        const ny = 80, nx = Math.max(8, Math.round(80 * aspect)), data = new Float32Array(nx * ny);
+        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+          let d = 0; try { d = depthInfo.getDepthInMeters((i + 0.5) / nx, (j + 0.5) / ny); } catch (e) { d = 0; }
+          data[j * nx + i] = d > 0 ? d : 0;
+        }
+        depth = { nx, ny, data, p: [P[0], P[5], P[8], P[9]] };
+      }
+      if (gray || depth) this.cap.submit({ t, R, C, intr, gray, depth, hits });
+    }
+    // overlays: measured points, tracked dots, start flag, reference marks
+    const mvp = M4.mul(P, M4.invRigid(m)), dpr = vp.width / (window.innerWidth || vp.width);
+    this.dots.drawMap(mvp, dpr);
+    if (this.cap.tracks) this.dots.drawTracks(this.cap.tracks, W, H, this.cap.flip, dpr);
+    this.drawMarks(mvp, dpr);
+  }
+  drawMarks(mvp, dpr) {
+    const cap = this.cap, v = [], c = [];
+    const gy = cap.groundY !== undefined && cap.groundY !== null ? cap.groundY : (cap.startC ? cap.startC[1] - 1.45 : 0);
+    if (cap.startC && cap.phase === 'walk') {
+      const x = cap.startC[0], z = cap.startC[2];
+      for (let h = 0; h <= 2.0; h += 0.06) { v.push(x, gy + h, z); c.push(1, 0.83, 0, 0.95); }
+    }
+    for (const p of [cap.refA, cap.refB]) if (p) {
+      for (let k = -4; k <= 4; k++) { v.push(p[0] + k * 0.03, p[1] + 0.01, p[2]); c.push(1, 0.3, 1, 1); v.push(p[0], p[1] + 0.01, p[2] + k * 0.03); c.push(1, 0.3, 1, 1); }
+    }
+    if (v.length) this.dots.drawLines(new Float32Array(v), new Float32Array(c), mvp, this.gl.POINTS);
+    if (cap.startC && cap.phase === 'walk') {
+      const x = cap.startC[0], z = cap.startC[2], top = gy + 2.0;
+      const f = new Float32Array([x, top, z, x + 0.45, top - 0.14, z, x, top - 0.28, z]);
+      this.dots.drawLines(f, new Float32Array([1, 0.83, 0, 0.9, 1, 0.83, 0, 0.9, 1, 0.83, 0, 0.9]), mvp, this.gl.TRIANGLES);
+    }
+  }
+}
+
+/* ---------- 3D result viewer (WebGL1): height-coloured pile surface with contours ---------- */
+class PileViewer {
+  constructor(canvas) {
+    this.c = canvas;
+    const gl = canvas.getContext('webgl', { antialias: true, alpha: false, preserveDrawingBuffer: true });
+    if (!gl) throw new Error('WebGL not available');
+    this.gl = gl;
+    this.ext = gl.getExtension('OES_element_index_uint');
+    gl.getExtension('OES_standard_derivatives');
+    this.prog = GLU.program(gl,
+      `attribute vec3 aPos; attribute vec3 aNrm; attribute vec4 aCol;
+       uniform mat4 uMVP; varying vec4 vCol; varying vec3 vN; varying float vH;
+       void main(){ vCol = aCol; vN = aNrm; vH = aPos.y; gl_Position = uMVP * vec4(aPos, 1.0); gl_PointSize = 2.5; }`,
+      `#extension GL_OES_standard_derivatives : enable
+       precision mediump float; varying vec4 vCol; varying vec3 vN; varying float vH;
+       uniform float uContour; uniform float uLit;
+       void main(){
+         vec3 c = vCol.rgb;
+         if (uLit > 0.5) {
+           float d = max(dot(normalize(vN), normalize(vec3(0.4, 0.85, 0.3))), 0.0);
+           c = c * (0.42 + 0.68 * d);
+           if (uContour > 0.0 && vCol.a > 0.5) {
+             float f = vH / uContour; float w = fwidth(f) * 1.2;
+             float l = abs(fract(f + 0.5) - 0.5);
+             c = mix(vec3(0.06), c, smoothstep(0.0, w, l) * 0.6 + 0.4 * step(w, l));
+           }
+         }
+         gl_FragColor = vec4(c, 1.0);
+       }`);
+    this.yaw = -0.7; this.pitch = 0.62; this.dist = 20; this.target = [0, 1, 0]; this.showPts = false; this.top = false;
+    this.bind();
+  }
+  load(res) {
+    const gl = this.gl, G = res.grid, nx = G.nx, nz = G.nz, s = G.s, Z = G.Z, M = G.mask;
+    const cx = res.center[0], cz = res.center[1];
+    this.cx = cx; this.cz = cz;
+    const pos = new Float32Array(nx * nz * 3), nrm = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 4);
+    let maxH = Math.max(0.5, res.maxHeight);
+    const zAt = (i, k) => { const v = Z[k * nx + i]; return v === v ? v : 0; };
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      const j = k * nx + i, z = zAt(i, k);
+      pos[j * 3] = G.x0 + i * s - cx; pos[j * 3 + 1] = Math.max(z, -0.05); pos[j * 3 + 2] = G.z0 + k * s - cz;
+      const hl = zAt(Math.max(0, i - 1), k), hr = zAt(Math.min(nx - 1, i + 1), k), hd = zAt(i, Math.max(0, k - 1)), hu = zAt(i, Math.min(nz - 1, k + 1));
+      let a = (hl - hr) / (2 * s), b = 1, cc = (hd - hu) / (2 * s); const l = Math.hypot(a, b, cc);
+      nrm[j * 3] = a / l; nrm[j * 3 + 1] = b / l; nrm[j * 3 + 2] = cc / l;
+      const inPile = M[j] & 1, seen = M[j] & 2;
+      let rgb;
+      if (inPile) { rgb = PileViewer.cmap(Math.max(0, z) / maxH); if (!seen) rgb = [rgb[0] * 0.6 + 0.3, rgb[1] * 0.6 + 0.3, rgb[2] * 0.6 + 0.3]; }
+      else rgb = seen ? [0.36, 0.38, 0.40] : [0.20, 0.21, 0.23];
+      col[j * 4] = rgb[0]; col[j * 4 + 1] = rgb[1]; col[j * 4 + 2] = rgb[2]; col[j * 4 + 3] = inPile ? 1 : 0;
+    }
+    const idx = [];
+    for (let k = 0; k < nz - 1; k++) for (let i = 0; i < nx - 1; i++) {
+      const a = k * nx + i, b = a + 1, c = a + nx, d = c + 1;
+      const ok = (q) => Z[q] === Z[q];
+      if (ok(a) && ok(b) && ok(c) && ok(d)) idx.push(a, c, d, a, d, b);
+    }
+    const mk = (data, tgt) => { const b = gl.createBuffer(); gl.bindBuffer(tgt || gl.ARRAY_BUFFER, b); gl.bufferData(tgt || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
+    this.bPos = mk(pos); this.bNrm = mk(nrm); this.bCol = mk(col);
+    const use32 = !!this.ext && nx * nz > 65535;
+    this.idxType = use32 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+    if (!use32 && nx * nz > 65535) { this.nIdx = 0; } else { this.bIdx = mk(use32 ? new Uint32Array(idx) : new Uint16Array(idx), gl.ELEMENT_ARRAY_BUFFER); this.nIdx = idx.length; }
+    // points (measured 3D points) and walking path
+    const P = res.points, np = P.length / 3, pp = new Float32Array(np * 3), pc = new Float32Array(np * 4), pn = new Float32Array(np * 3);
+    for (let q = 0; q < np; q++) { pp[q * 3] = P[q * 3] - cx; pp[q * 3 + 1] = P[q * 3 + 1]; pp[q * 3 + 2] = P[q * 3 + 2] - cz; pc.set([0.15, 0.95, 0.4, 0], q * 4); pn[q * 3 + 1] = 1; }
+    this.bPP = mk(pp); this.bPC = mk(pc); this.bPN = mk(pn); this.nPP = np;
+    const L = res.path, nl = L.length / 3, lp = new Float32Array(nl * 3), lc = new Float32Array(nl * 4), ln = new Float32Array(nl * 3);
+    for (let q = 0; q < nl; q++) { lp[q * 3] = L[q * 3] - cx; lp[q * 3 + 1] = 0.03; lp[q * 3 + 2] = L[q * 3 + 2] - cz; lc.set([1, 0.8, 0.1, 0], q * 4); ln[q * 3 + 1] = 1; }
+    this.bLP = mk(lp); this.bLC = mk(lc); this.bLN = mk(ln); this.nLP = nl;
+    const ext = Math.max(res.length || 10, 6);
+    this.dist0 = ext * 1.55 + 4; this.dist = this.dist0; this.target = [0, maxH * 0.3, 0];
+    const st = maxH / 6; this.contour = st < 0.3 ? 0.25 : (st < 0.75 ? 0.5 : (st < 1.5 ? 1 : 2));
+    this.render();
+  }
+  static cmap(t) {
+    t = Math.max(0, Math.min(1, t));
+    const S = [[0, 0.12, 0.24, 0.6], [0.25, 0.0, 0.66, 0.78], [0.5, 0.24, 0.78, 0.32], [0.75, 0.98, 0.78, 0.12], [1, 0.9, 0.24, 0.16]];
+    for (let i = 1; i < S.length; i++) if (t <= S[i][0]) { const a = S[i - 1], b = S[i], u = (t - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u]; }
+    return [0.9, 0.24, 0.16];
+  }
+  resize() {
+    const r = this.c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+    if (this.c.width !== w || this.c.height !== h) { this.c.width = w; this.c.height = h; }
+  }
+  render() {
+    if (!this.bPos) return;
+    this.resize();
+    const gl = this.gl, p = this.prog, w = this.c.width, h = this.c.height;
+    gl.viewport(0, 0, w, h); gl.clearColor(0.075, 0.085, 0.10, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    const pitch = this.top ? 1.5607 : this.pitch;
+    const eye = [this.target[0] + this.dist * Math.cos(pitch) * Math.cos(this.yaw), this.target[1] + this.dist * Math.sin(pitch), this.target[2] + this.dist * Math.cos(pitch) * Math.sin(this.yaw)];
+    const V = PileViewer.lookAt(eye, this.target, this.top ? [Math.cos(this.yaw + Math.PI), 0, Math.sin(this.yaw + Math.PI)] : [0, 1, 0]);
+    const Pm = M4.perspective(45 * Math.PI / 180, w / h, 0.1, 500), mvp = M4.mul(Pm, V);
+    gl.useProgram(p); gl.uniformMatrix4fv(p.u.uMVP, false, mvp);
+    const attr = (b, loc, n) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); };
+    attr(this.bPos, p.a.aPos, 3); attr(this.bNrm, p.a.aNrm, 3); attr(this.bCol, p.a.aCol, 4);
+    gl.uniform1f(p.u.uContour, this.contour); gl.uniform1f(p.u.uLit, 1);
+    if (this.nIdx) { gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bIdx); gl.drawElements(gl.TRIANGLES, this.nIdx, this.idxType, 0); }
+    gl.uniform1f(p.u.uLit, 0);
+    if (this.showPts && this.nPP) { attr(this.bPP, p.a.aPos, 3); attr(this.bPN, p.a.aNrm, 3); attr(this.bPC, p.a.aCol, 4); gl.drawArrays(gl.POINTS, 0, this.nPP); }
+    if (this.nLP) { attr(this.bLP, p.a.aPos, 3); attr(this.bLN, p.a.aNrm, 3); attr(this.bLC, p.a.aCol, 4); gl.drawArrays(gl.LINE_STRIP, 0, this.nLP); }
+  }
+  static lookAt(e, t, up) {
+    let z = [e[0] - t[0], e[1] - t[1], e[2] - t[2]]; let l = Math.hypot(...z); z = z.map(v => v / l);
+    let x = [up[1] * z[2] - up[2] * z[1], up[2] * z[0] - up[0] * z[2], up[0] * z[1] - up[1] * z[0]]; l = Math.hypot(...x) || 1; x = x.map(v => v / l);
+    const y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0,
+      -(x[0] * e[0] + x[1] * e[1] + x[2] * e[2]), -(y[0] * e[0] + y[1] * e[1] + y[2] * e[2]), -(z[0] * e[0] + z[1] * e[1] + z[2] * e[2]), 1]);
+  }
+  bind() {
+    const c = this.c, ptrs = new Map(); let lastD = 0, lastTap = 0;
+    const redraw = () => { if (!this._raf) this._raf = requestAnimationFrame(() => { this._raf = 0; this.render(); }); };
+    c.addEventListener('pointerdown', (e) => {
+      c.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY, e.button]);
+      const now = performance.now(); if (now - lastTap < 300) { this.yaw = -0.7; this.pitch = 0.62; this.dist = this.dist0; redraw(); } lastTap = now;
+    });
+    c.addEventListener('pointermove', (e) => {
+      if (!ptrs.has(e.pointerId)) return;
+      const prev = ptrs.get(e.pointerId), dx = e.clientX - prev[0], dy = e.clientY - prev[1];
+      ptrs.set(e.pointerId, [e.clientX, e.clientY, prev[2]]);
+      if (ptrs.size === 1) {
+        if (prev[2] === 2 || e.shiftKey) this.pan(dx, dy);
+        else { this.yaw += dx * 0.008; this.pitch = Math.max(0.05, Math.min(1.5, this.pitch + dy * 0.006)); }
+      } else if (ptrs.size === 2) {
+        const [a, b] = Array.from(ptrs.values()), d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (lastD) this.dist = Math.max(2, Math.min(300, this.dist * lastD / d));
+        lastD = d; this.pan(dx / 2, dy / 2);
+      }
+      redraw();
+    });
+    const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) lastD = 0; };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('wheel', (e) => { e.preventDefault(); this.dist = Math.max(2, Math.min(300, this.dist * Math.exp(e.deltaY * 0.001))); redraw(); }, { passive: false });
+    window.addEventListener('resize', redraw);
+  }
+  pan(dx, dy) {
+    const k = this.dist * 0.0016, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    const right = [sy, 0, -cy], fwd = [-cy, 0, -sy];
+    this.target[0] += -right[0] * dx * k + fwd[0] * dy * k;
+    this.target[2] += -right[2] * dx * k + fwd[2] * dy * k;
+  }
+  setTop(v) { this.top = v; this.render(); }
+  setPoints(v) { this.showPts = v; this.render(); }
+  snapshot(w, h) {
+    this.render();
+    const out = document.createElement('canvas'); out.width = w; out.height = h;
+    out.getContext('2d').drawImage(this.c, 0, 0, w, h);
+    return out.toDataURL('image/jpeg', 0.75);
+  }
+}
+
+/* ---------- raw-data recorder + minimal ZIP writer ----------
+   Saves what the engine saw (small camera frames, depth, poses) so a
+   measurement can be re-processed later, e.g. on a laptop, or debugged. */
+const Zip = {
+  table: null,
+  crc32(u8) {
+    if (!this.table) { this.table = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; this.table[n] = c >>> 0; } }
+    let c = 0xFFFFFFFF; const T = this.table;
+    for (let i = 0; i < u8.length; i++) c = T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  },
+  async build(files) {
+    const enc = new TextEncoder(), parts = [], central = [];
+    let offset = 0;
+    const d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)), dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate());
+    for (const f of files) {
+      let data = f.data;
+      if (data instanceof Blob) data = new Uint8Array(await data.arrayBuffer());
+      else if (typeof data === 'string') data = enc.encode(data);
+      else if (!(data instanceof Uint8Array)) data = new Uint8Array(data.buffer || data);
+      const name = enc.encode(f.name), crc = this.crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dt, true); lh.setUint16(12, dd, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh.buffer, name, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dt, true); ch.setUint16(14, dd, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(ch.buffer, name);
+      offset += 30 + name.length + data.length;
+    }
+    let cdSize = 0; for (const c of central) cdSize += c.byteLength;
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+  }
+};
+
+class Recorder {
+  constructor() { this.frames = []; this.events = []; this.pending = 0; this.cv = document.createElement('canvas'); }
+  add(fr, progress) {
+    const i = this.frames.length;
+    const rec = { i, t: +fr.t.toFixed(4), R: fr.R.map(v => +v.toFixed(6)), C: fr.C.map(v => +v.toFixed(5)), intr: fr.intr, progress: +progress.toFixed(4), hits: fr.hits || null };
+    if (fr.depth) {
+      const d = fr.depth, u = new Uint16Array(d.data.length);
+      for (let k = 0; k < u.length; k++) u[k] = Math.min(65535, Math.round(d.data[k] * 1000));
+      rec.depth = { nx: d.nx, ny: d.ny, p: d.p }; rec._d = u;
+    }
+    if (fr.gray && (i % 2 === 0)) {
+      const w = fr.intr.w, h = fr.intr.h, g = fr.gray;
+      this.cv.width = w; this.cv.height = h;
+      const ctx = this.cv.getContext('2d'), im = ctx.createImageData(w, h);
+      for (let k = 0, q = 0; k < w * h; k++, q += 4) { im.data[q] = im.data[q + 1] = im.data[q + 2] = g[k]; im.data[q + 3] = 255; }
+      ctx.putImageData(im, 0, 0);
+      this.pending++;
+      this.cv.toBlob((b) => { rec._jpg = b; this.pending--; }, 'image/jpeg', 0.9);
+      rec.gray = 'gray/' + String(i).padStart(6, '0') + '.jpg';
+    }
+    this.frames.push(rec);
+  }
+  event(type, data) { this.events.push(Object.assign({ type }, data)); }
+  sizeMB() { let s = 0; for (const f of this.frames) { if (f._d) s += f._d.byteLength; if (f._jpg) s += f._jpg.size; } return s / 1e6; }
+  async zip(extra) {
+    while (this.pending > 0) await new Promise(r => setTimeout(r, 50));
+    const files = [], depthParts = []; let off = 0;
+    const meta = [];
+    for (const f of this.frames) {
+      const m = Object.assign({}, f); delete m._d; delete m._jpg;
+      if (f._d) { m.depth.offset = off; m.depth.count = f._d.length; depthParts.push(f._d); off += f._d.length; }
+      if (f._jpg) files.push({ name: f.gray, data: f._jpg });
+      meta.push(m);
+    }
+    const depthAll = new Uint16Array(off); let o = 0; for (const p of depthParts) { depthAll.set(p, o); o += p.length; }
+    files.unshift({ name: 'recording.json', data: JSON.stringify({ app: 'Photoscale', format: 1, note: 'gray images are stored bottom-up as read from GPU; flipMode tells the orientation', events: this.events, frames: meta, extra: extra || {} }) });
+    files.push({ name: 'depth_mm_uint16.bin', data: new Uint8Array(depthAll.buffer) });
+    return Zip.build(files);
+  }
+}
+
+/* ---------- app: screens, materials, results, history ---------- */
+const APP_VERSION = '1.0.0';
+const PRESETS = [
+  { name: 'Gravel (loose)', d: 1.60 }, { name: 'Sand (dry)', d: 1.60 }, { name: 'Crushed stone', d: 1.55 },
+  { name: 'Limestone (crushed)', d: 1.55 }, { name: 'Soil / earth (loose)', d: 1.30 },
+  { name: 'Coal — loose', d: 0.80 }, { name: 'Coal — stockpiled', d: 0.90 }, { name: 'Lignite', d: 0.75 },
+  { name: 'Fly ash (dry)', d: 0.85 }, { name: 'Bottom ash', d: 0.95 }, { name: 'Gypsum (FGD, moist)', d: 1.10 }
+];
+const Store = {
+  get(k, d) { try { const v = localStorage.getItem('photoscale.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('photoscale.' + k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+};
+const DB = {
+  db: null,
+  open() {
+    return new Promise((res) => {
+      try {
+        const r = indexedDB.open('photoscale', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('results', { keyPath: 'id' });
+        r.onsuccess = () => { this.db = r.result; res(this.db); };
+        r.onerror = () => res(null);
+      } catch (e) { res(null); }
+    });
+  },
+  async tx(mode, fn) {
+    const db = this.db || await this.open(); if (!db) return null;
+    return new Promise((res) => {
+      try {
+        const t = db.transaction('results', mode), st = t.objectStore('results'), q = fn(st);
+        t.oncomplete = () => res(q && q.result !== undefined ? q.result : true); t.onerror = () => res(null);
+      } catch (e) { res(null); }
+    });
+  },
+  put(o) { return this.tx('readwrite', (s) => s.put(o)); },
+  get(id) { return this.tx('readonly', (s) => s.get(id)); },
+  del(id) { return this.tx('readwrite', (s) => s.delete(id)); }
+};
+const fmt = {
+  n(v, d) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); },
+  big(v) { return v >= 1000 ? fmt.n(v, 0) : (v >= 100 ? fmt.n(v, 1) : fmt.n(v, 2)); },
+  dur(s) { s = Math.round(s); return s >= 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : s + ' s'; },
+  date(iso) { const d = new Date(iso); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); }
+};
+
+const App = {
+  cur: null, viewer: null, arOk: false,
+  init() {
+    $('ver').textContent = APP_VERSION;
+    document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => this.show(b.dataset.go)));
+    $('go-home').onclick = () => this.show('home');
+    this.fillMaterials();
+    const last = Store.get('last', null);
+    $('in-name').value = this.defaultName();
+    if (last) { this.selectMaterial(last.material, last.density); }
+    $('in-mat').onchange = () => { const o = $('in-mat').selectedOptions[0]; if (o && o.dataset.d) $('in-den').value = o.dataset.d; };
+    $('btn-ar').onclick = () => this.startAR();
+    $('btn-demo').onclick = () => this.startDemo();
+    // result screen
+    $('v-3d').onclick = () => { this.viewer && this.viewer.setTop(false); $('v-3d').classList.add('on'); $('v-top').classList.remove('on'); };
+    $('v-top').onclick = () => { this.viewer && this.viewer.setTop(true); $('v-top').classList.add('on'); $('v-3d').classList.remove('on'); };
+    $('v-pts').onclick = () => { const on = !$('v-pts').classList.contains('on'); $('v-pts').classList.toggle('on', on); this.viewer && this.viewer.setPoints(on); };
+    $('res-den').onclick = () => this.editDensity();
+    $('tape-apply').onclick = () => this.applyTape();
+    $('cal-go').onclick = () => this.calibrate();
+    $('res-save').onclick = () => this.save();
+    $('res-share').onclick = () => this.share();
+    $('res-json').onclick = () => this.exportJSON();
+    $('res-raw').onclick = () => this.downloadRaw();
+    $('res-new').onclick = () => { $('in-name').value = this.defaultName(); this.show('home'); };
+    $('hist-csv').onclick = () => this.exportCSV();
+    // settings
+    $('set-record').checked = Store.get('record', false); $('set-record').onchange = (e) => Store.set('record', e.target.checked);
+    $('set-debug').checked = Store.get('debug', false); $('set-debug').onchange = (e) => Store.set('debug', e.target.checked);
+    $('set-speed').value = String(Store.get('speed', 2)); $('set-speed').onchange = (e) => Store.set('speed', +e.target.value);
+    $('mat-add').onclick = () => this.addMaterial($('mat-name').value, $('mat-den').value);
+    $('ov-stats').classList.toggle('hidden', !Store.get('debug', false));
+    this.updateHistCount();
+    this.checkAR();
+    window.addEventListener('hashchange', () => this.route());
+    if (location.hash === '#demo') setTimeout(() => this.startDemo(), 300);
+  },
+  route() { const h = location.hash.replace('#', ''); if (['home', 'history', 'guide', 'settings'].includes(h)) this.show(h); },
+  show(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + name));
+    if (name === 'history') this.renderHistory();
+    if (name === 'settings') this.renderMaterials();
+    window.scrollTo(0, 0);
+    if (name === 'result' && this.viewer) setTimeout(() => this.viewer.render(), 30);
+  },
+  toast(msg, kind, ms) {
+    const t = $('toast'); t.textContent = msg; t.className = 'toast ' + (kind || '');
+    clearTimeout(this._tt); this._tt = setTimeout(() => t.classList.add('hidden'), ms || 4200);
+  },
+  defaultName() { const d = new Date(); return 'Pile ' + d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); },
+  /* materials */
+  allMaterials() { return PRESETS.map(p => Object.assign({ preset: true }, p)).concat(Store.get('materials', [])); },
+  fillMaterials() {
+    const sel = $('in-mat'), mine = Store.get('materials', []);
+    sel.innerHTML = '';
+    const add = (label, list) => {
+      if (!list.length) return;
+      const g = document.createElement('optgroup'); g.label = label;
+      for (const m of list) { const o = document.createElement('option'); o.textContent = m.name + ' · ' + m.d.toFixed(2); o.value = m.name; o.dataset.d = m.d; g.appendChild(o); }
+      sel.appendChild(g);
+    };
+    add('My materials', mine); add('Typical values', PRESETS);
+    const o = document.createElement('option'); o.textContent = 'Other (type density)'; o.value = '__other'; sel.appendChild(o);
+    if (!$('in-den').value) { sel.value = PRESETS[0].name; $('in-den').value = PRESETS[0].d; }
+  },
+  selectMaterial(name, d) {
+    const sel = $('in-mat');
+    if ([...sel.options].some(o => o.value === name)) sel.value = name; else sel.value = '__other';
+    $('in-den').value = d;
+  },
+  addMaterial(name, d) {
+    name = (name || '').trim(); d = parseFloat(d);
+    if (!name || !(d > 0.05 && d < 5)) { this.toast('Enter a name and a density between 0.05 and 5 t/m³', 'bad'); return false; }
+    const mine = Store.get('materials', []).filter(m => m.name !== name);
+    mine.unshift({ name, d: Math.round(d * 1000) / 1000 });
+    Store.set('materials', mine); this.fillMaterials(); this.renderMaterials();
+    $('mat-name').value = ''; $('mat-den').value = '';
+    this.toast('Saved material “' + name + '”', 'ok');
+    return true;
+  },
+  renderMaterials() {
+    const box = $('set-mats'), mine = Store.get('materials', []);
+    box.innerHTML = mine.length ? '' : '<p class="muted">No materials of your own yet. Add one below, or calibrate from a weighed pile on a result page.</p>';
+    mine.forEach((m, i) => {
+      const r = document.createElement('div'); r.className = 'mat';
+      r.innerHTML = `<span>${esc(m.name)} <b>${m.d.toFixed(3)} t/m³</b></span>`;
+      const b = document.createElement('button'); b.textContent = 'Delete';
+      b.onclick = () => { const l = Store.get('materials', []); l.splice(i, 1); Store.set('materials', l); this.fillMaterials(); this.renderMaterials(); };
+      r.appendChild(b); box.appendChild(r);
+    });
+  },
+  readForm() {
+    const sel = $('in-mat'), d = parseFloat($('in-den').value);
+    const material = sel.value === '__other' ? 'Custom' : sel.value;
+    const meta = { name: ($('in-name').value || this.defaultName()).trim(), material, density: d > 0 ? d : 1 };
+    Store.set('last', { material: sel.value, density: meta.density });
+    return meta;
+  },
+  /* capture */
+  async checkAR() {
+    const st = $('ar-status');
+    if (!window.isSecureContext) { st.textContent = 'AR needs a secure (https) page.'; st.className = 'status bad'; return; }
+    this.arOk = await XRSource.supported();
+    if (this.arOk) { st.textContent = '✓ AR is available on this device.'; st.className = 'status ok'; }
+    else { st.textContent = 'AR is not available here. It needs Chrome on an ARCore Android phone — you can still try the demo.'; st.className = 'status bad'; }
+  },
+  hooks() {
+    return {
+      onResult: (r, extra) => this.onResult(r, extra),
+      onError: (m) => this.toast(m, 'bad', 7000),
+      onExit: (m) => { if (m) this.toast(m); this.show('home'); }
+    };
+  },
+  async startAR() {
+    if (!this.arOk) { this.toast('AR is not available on this device or browser. Try the demo instead.', 'bad', 6000); return; }
+    const meta = this.readForm();
+    const src = new XRSource();
+    const cap = new Capture(this.hooks());
+    cap.begin(src, meta, { record: Store.get('record', false) });
+    $('ov-stats').classList.toggle('hidden', !Store.get('debug', false));
+    try { await src.start(cap); }
+    catch (e) {
+      cap.phase = 'done'; try { cap.worker.terminate(); } catch (_) { }
+      Overlay.hide();
+      this.toast('Could not start AR: ' + (e && e.message || e), 'bad', 9000);
+    }
+  },
+  startDemo() {
+    const meta = this.readForm();
+    meta.name = 'Demo pile (simulated)';
+    const sim = new SimSource({ kind: 'demo', speed: Store.get('speed', 2) });
+    try { sim.init($('sim-canvas')); } catch (e) { this.toast(e.message, 'bad'); return; }
+    const cap = new Capture(this.hooks());
+    cap.begin(sim, meta, { record: false });
+    $('ov-stats').classList.toggle('hidden', !Store.get('debug', false));
+    SimRunner.interactive(cap, sim);
+  },
+  /* results */
+  onResult(r, extra) {
+    if (r.error) { this.toast(r.error, 'bad', 9000); this.show('home'); return; }
+    const m = extra.meta;
+    this.cur = { id: 'm' + Date.now(), r, extra, name: m.name, material: m.material, density: m.density, date: new Date().toISOString(), scale: 1, tapeAR: null, tape: null, saved: false };
+    if (extra.refA && extra.refB) this.cur.tapeAR = Math.hypot(extra.refA[0] - extra.refB[0], extra.refA[1] - extra.refB[1], extra.refA[2] - extra.refB[2]);
+    this.openResult();
+  },
+  openResult() {
+    const c = this.cur;
+    this.show('result');
+    if (!this.viewer) { try { this.viewer = new PileViewer($('res-3d')); } catch (e) { console.warn(e); } }
+    if (this.viewer) { this.viewer.load(c.r); $('v-3d').classList.add('on'); $('v-top').classList.remove('on'); $('v-pts').classList.remove('on'); this.viewer.top = false; this.viewer.showPts = false; }
+    $('res-tape').classList.toggle('hidden', !c.tapeAR);
+    if (c.tapeAR) { $('tape-ar').textContent = fmt.n(c.tapeAR, 3) + ' m'; $('tape-in').value = c.tape || ''; $('tape-out').textContent = c.tape ? this.tapeText() : ''; }
+    $('cal-in').value = ''; $('cal-out').textContent = '';
+    $('res-raw').classList.toggle('hidden', !(c.extra && c.extra.recorder));
+    $('res-save').textContent = c.saved ? 'Update saved measurement' : 'Save to history';
+    this.renderResult();
+    setTimeout(() => this.viewer && this.viewer.render(), 50);
+  },
+  numbers() {
+    const c = this.cur, r = c.r, f = c.scale, f3 = f * f * f, V = r.volume * f3;
+    const p = r.parts, scalePart = c.tape ? 3 * 0.003 * V : p.scale * f3;
+    const parts = { scale: scalePart, fill: p.fill * f3, base: p.base * f3, loop: p.loop * f3 };
+    const sig = Math.sqrt(parts.scale ** 2 + parts.fill ** 2 + parts.base ** 2 + parts.loop ** 2);
+    const lo = Math.max(0, V - 1.5 * sig), hi = V + 1.5 * sig;
+    return { V, lo, hi, pm: V > 0 ? 1.5 * sig / V * 100 : 0, parts, f, T: V * c.density, Tlo: lo * c.density, Thi: hi * c.density };
+  },
+  renderResult() {
+    const c = this.cur, r = c.r, N = this.numbers(), f = N.f;
+    $('res-title').textContent = c.name;
+    $('res-sub').textContent = fmt.date(c.date) + ' · ' + c.material + (c.extra && c.extra.source === 'demo' ? ' · demo' : '');
+    $('res-vol').textContent = fmt.big(N.V);
+    $('res-vol-range').textContent = 'likely ' + fmt.big(N.lo) + '–' + fmt.big(N.hi) + ' m³ (±' + N.pm.toFixed(0) + '%)';
+    $('res-ton').textContent = fmt.big(N.T);
+    $('res-den').textContent = 'at ' + c.density.toFixed(2) + ' t/m³ ✎';
+    const q = $('res-quality');
+    // grade the capture itself (loop, coverage, ground, drift); the ± range is shown separately
+    const nw = r.warnings.length;
+    const grade = nw === 0 && r.coverage >= 0.85 ? ['good', 'Good capture'] : (nw <= 1 && r.coverage >= 0.7 ? ['fair', 'Fair — see notes'] : ['poor', 'Check the notes']);
+    q.className = 'qbadge ' + grade[0]; q.textContent = grade[1];
+    const tr = $('res-truth');
+    if (c.extra && c.extra.truth) {
+      const e = (N.V - c.extra.truth) / c.extra.truth * 100;
+      tr.classList.remove('hidden');
+      tr.innerHTML = `Demo check: the simulated pile's true volume is <b>${fmt.n(c.extra.truth, 2)} m³</b>, so this measurement is off by <b>${e >= 0 ? '+' : ''}${e.toFixed(1)}%</b>.`;
+    } else tr.classList.add('hidden');
+    const stats = [
+      [fmt.n(r.footprint * f * f, 1) + ' m²', 'footprint'], [fmt.n(r.maxHeight * f, 2) + ' m', 'peak height'],
+      [fmt.n(r.length * f, 1) + ' × ' + fmt.n(r.width * f, 1) + ' m', 'length × width'],
+      [Math.round(r.coverage * 100) + '%', 'surface seen'], [r.progress >= 0.98 ? 'Yes ✓' : Math.round(r.progress * 100) + '%', 'loop closed'],
+      [fmt.dur(r.duration), 'walk time']
+    ];
+    $('res-stats').innerHTML = stats.map(s => `<div class="stat"><b>${s[0]}</b><span>${s[1]}</span></div>`).join('');
+    const W = $('res-warn'); W.innerHTML = '';
+    for (const w of r.warnings) { const li = document.createElement('li'); li.textContent = w; W.appendChild(li); }
+    if (!r.warnings.length) { const li = document.createElement('li'); li.className = 'ok'; li.textContent = 'No problems detected: the loop was closed, the surface was well covered and the ground level is consistent.'; W.appendChild(li); }
+    if (!c.tape && c.tapeAR === null && N.pm > 4) {
+      const li = document.createElement('li'); li.className = 'tip'; li.textContent = 'Tip: most of the ± range is the phone\'s own sense of distance. Mark two taped points (Mark A / Mark B) during the walk to shrink it to about ±2–3%.'; W.appendChild(li);
+    }
+    const P = N.parts, row = (a, b, v) => `<div class="why-row"><span><b>${a}</b><br><span class="muted">${b}</span></span><b>±${fmt.big(1.5 * v)} m³</b></div>`;
+    $('why-body').innerHTML =
+      `<p class="muted">The range shown is where the true volume most likely lies. It adds up these sources of error (each shown at the same confidence):</p>` +
+      row('Phone scale', c.tape ? 'Corrected with your tape check.' : 'The phone\'s sense of distance can be off by 1–2%; volume triples that. A tape check removes most of it.', P.scale) +
+      row('Unseen areas', Math.round((1 - r.coverage) * 100) + '% of the surface was filled in by estimation (' + fmt.big(r.filledVolume * f * f * f) + ' m³ of the volume).', P.fill) +
+      row('Ground level', 'How well the ground around the pile defines the base under it (spread ' + (r.ringRms * 100).toFixed(1) + ' cm).', P.base) +
+      row('Tracking drift', r.loopMismatch !== null ? 'Where your loop closed, start and end differed by ' + (r.loopMismatch * 100).toFixed(1) + ' cm.' : 'Could not be checked at the loop end.', P.loop) +
+      `<p class="muted small">Tonnage also depends on the density you chose (${c.density.toFixed(2)} t/m³). A 5% error in density is a 5% error in tonnes — calibrate it with a weighed pile when you can.</p>`;
+  },
+  editDensity() {
+    const v = prompt('Bulk density in t/m³ for this pile:', this.cur.density);
+    const d = parseFloat(v); if (!(d > 0.05 && d < 5)) return;
+    this.cur.density = d; this.renderResult();
+  },
+  tapeText() {
+    const c = this.cur, e = (c.tapeAR - c.tape) / c.tape * 100;
+    return `Phone scale was off by ${e >= 0 ? '+' : ''}${e.toFixed(2)}% — corrected. Volume changed by ${((c.scale ** 3 - 1) * 100).toFixed(1)}%.`;
+  },
+  applyTape() {
+    const c = this.cur, d = parseFloat($('tape-in').value);
+    if (!(d > 0.3)) { this.toast('Enter the taped distance in metres', 'bad'); return; }
+    const f = d / c.tapeAR;
+    if (f < 0.85 || f > 1.15) { if (!confirm('That is ' + ((f - 1) * 100).toFixed(1) + '% different from the phone. Were the right points marked? Apply anyway?')) return; }
+    c.tape = d; c.scale = f; $('tape-out').textContent = this.tapeText(); this.renderResult();
+    this.viewer && this.viewer.render();
+  },
+  calibrate() {
+    const N = this.numbers(), t = parseFloat($('cal-in').value);
+    if (!(t > 0) || !(N.V > 0)) { this.toast('Enter the known tonnage', 'bad'); return; }
+    const d = t / N.V;
+    const out = $('cal-out');
+    out.innerHTML = `Density = ${fmt.n(t, 1)} t ÷ ${fmt.big(N.V)} m³ = <b>${d.toFixed(3)} t/m³</b> (±${N.pm.toFixed(0)}% from the volume). `;
+    const b = document.createElement('button'); b.className = 'btn small'; b.textContent = 'Save as material';
+    b.onclick = () => { const name = prompt('Material name:', (this.cur.material && this.cur.material !== 'Custom' ? this.cur.material + ' (calibrated)' : 'My material')); if (name && this.addMaterial(name, d)) { this.cur.density = d; this.cur.material = name.trim(); this.renderResult(); } };
+    out.appendChild(b);
+  },
+  summaryText() {
+    const c = this.cur, r = c.r, N = this.numbers(), f = N.f;
+    return `Photoscale — ${c.name}\n${fmt.date(c.date)}\nVolume: ${fmt.big(N.V)} m³ (likely ${fmt.big(N.lo)}–${fmt.big(N.hi)})\n` +
+      `Tonnage: ${fmt.big(N.T)} t at ${c.density.toFixed(2)} t/m³ (${c.material})\n` +
+      `Footprint ${fmt.n(r.footprint * f * f, 1)} m² · peak ${fmt.n(r.maxHeight * f, 2)} m · ${fmt.n(r.length * f, 1)} × ${fmt.n(r.width * f, 1)} m` +
+      (c.tape ? `\nScale checked with tape (${fmt.n(c.tape, 2)} m)` : '');
+  },
+  async share() {
+    const text = this.summaryText();
+    try { if (navigator.share) { await navigator.share({ title: 'Photoscale — ' + this.cur.name, text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(text); this.toast('Summary copied to the clipboard', 'ok'); } catch (e) { prompt('Copy the summary:', text); }
+  },
+  record() {
+    const c = this.cur, N = this.numbers();
+    return {
+      id: c.id, name: c.name, material: c.material, density: c.density, date: c.date, volume: N.V, lo: N.lo, hi: N.hi, tonnes: N.T,
+      footprint: c.r.footprint * N.f * N.f, peak: c.r.maxHeight * N.f, coverage: c.r.coverage, source: c.extra && c.extra.source,
+      tape: c.tape, scale: c.scale, warnings: c.r.warnings.length
+    };
+  },
+  async save() {
+    const c = this.cur, rec = this.record();
+    try { rec.thumb = this.viewer ? this.viewer.snapshot(240, 160) : null; } catch (e) { rec.thumb = null; }
+    const hist = Store.get('history', []).filter(h => h.id !== c.id); hist.unshift(rec);
+    if (!Store.set('history', hist)) { hist.forEach(h => { h.thumb = null; }); Store.set('history', hist); }
+    const full = { id: c.id, r: c.r, cur: { name: c.name, material: c.material, density: c.density, date: c.date, scale: c.scale, tape: c.tape, tapeAR: c.tapeAR, truth: c.extra && c.extra.truth, source: c.extra && c.extra.source } };
+    const ok = await DB.put(full);
+    c.saved = true; $('res-save').textContent = 'Update saved measurement';
+    this.updateHistCount();
+    this.toast(ok ? 'Saved to history' : 'Saved the summary (this browser could not store the 3D model)', 'ok');
+  },
+  updateHistCount() { const n = Store.get('history', []).length; $('hist-count').textContent = n ? n : ''; },
+  renderHistory() {
+    const list = $('hist-list'), hist = Store.get('history', []);
+    list.innerHTML = ''; $('hist-empty').classList.toggle('hidden', hist.length > 0);
+    for (const h of hist) {
+      const it = document.createElement('div'); it.className = 'hitem';
+      it.innerHTML = `${h.thumb ? `<img src="${h.thumb}" alt="">` : '<img alt="">'}<div class="hx"><b>${esc(h.name)}</b><span>${fmt.date(h.date)} · ${esc(h.material)}</span></div>` +
+        `<div class="hv"><b>${fmt.big(h.volume)} m³</b><span class="muted small">${fmt.big(h.tonnes)} t</span></div>`;
+      const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕'; del.title = 'Delete';
+      del.onclick = async (e) => { e.stopPropagation(); if (!confirm('Delete “' + h.name + '”?')) return; Store.set('history', Store.get('history', []).filter(x => x.id !== h.id)); await DB.del(h.id); this.updateHistCount(); this.renderHistory(); };
+      it.appendChild(del);
+      it.onclick = () => this.openSaved(h);
+      list.appendChild(it);
+    }
+  },
+  async openSaved(h) {
+    const full = await DB.get(h.id);
+    if (!full || !full.r) { this.toast('The 3D data of this measurement is not available in this browser.', 'bad'); return; }
+    const k = full.cur;
+    this.cur = { id: full.id, r: full.r, extra: { meta: {}, truth: k.truth, source: k.source }, name: k.name, material: k.material, density: k.density, date: k.date, scale: k.scale || 1, tape: k.tape || null, tapeAR: k.tapeAR || null, saved: true };
+    this.openResult();
+  },
+  download(blob, name) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  },
+  fileBase() { return ('photoscale_' + this.cur.name).replace(/[^\w\-]+/g, '_').slice(0, 60); },
+  exportJSON() {
+    const c = this.cur, r = c.r, N = this.numbers();
+    const b64 = (ta) => { const u = new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength); let s = ''; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(s); };
+    const out = {
+      app: 'Photoscale', version: APP_VERSION, name: c.name, date: c.date, material: c.material, density_t_per_m3: c.density,
+      volume_m3: +N.V.toFixed(3), volume_likely_range_m3: [+N.lo.toFixed(3), +N.hi.toFixed(3)], tonnes: +N.T.toFixed(3),
+      footprint_m2: +(r.footprint * N.f * N.f).toFixed(3), peak_height_m: +(r.maxHeight * N.f).toFixed(3),
+      length_m: +(r.length * N.f).toFixed(2), width_m: +(r.width * N.f).toFixed(2), surface_seen: +r.coverage.toFixed(3),
+      loop_progress: +r.progress.toFixed(3), tape_check: c.tape ? { ar_distance_m: c.tapeAR, tape_distance_m: c.tape, scale_factor: c.scale } : null,
+      error_parts_m3: N.parts, warnings: r.warnings,
+      height_grid: { note: 'heights above the base plane in metres, row-major (z rows, x columns); NaN = not measured; mask bit0 = pile, bit1 = seen (a measurement within 25 cm)', nx: r.grid.nx, nz: r.grid.nz, cell_m: r.grid.s, scale_applied: c.scale, Z_float32_base64: b64(r.grid.Z), mask_uint8_base64: b64(r.grid.mask) }
+    };
+    this.download(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }), this.fileBase() + '.json');
+  },
+  async downloadRaw() {
+    const rec = this.cur.extra && this.cur.extra.recorder; if (!rec) return;
+    Busy.show('Packing raw data (' + rec.sizeMB().toFixed(0) + ' MB)…');
+    try {
+      const blob = await rec.zip({ name: this.cur.name, flipMode: this.cur.r.flipMode, result_volume_m3: this.cur.r.volume, features: this.cur.extra.features });
+      this.download(blob, this.fileBase() + '_raw.zip');
+    } catch (e) { this.toast('Could not pack the raw data: ' + e.message, 'bad'); }
+    Busy.hide();
+  },
+  exportCSV() {
+    const hist = Store.get('history', []);
+    if (!hist.length) { this.toast('No saved measurements yet'); return; }
+    const rows = [['name', 'date', 'material', 'density_t_m3', 'volume_m3', 'volume_low_m3', 'volume_high_m3', 'tonnes', 'footprint_m2', 'peak_m', 'surface_seen', 'tape_checked']];
+    for (const h of hist) rows.push([h.name, h.date, h.material, h.density, h.volume.toFixed(3), h.lo.toFixed(3), h.hi.toFixed(3), h.tonnes.toFixed(3), h.footprint.toFixed(2), h.peak.toFixed(2), h.coverage.toFixed(3), h.tape ? 'yes' : 'no']);
+    const csv = rows.map(r => r.map(v => /[",;\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');
+    this.download(new Blob(['﻿' + csv], { type: 'text/csv' }), 'photoscale_history.csv');
+  }
+};
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+window.addEventListener('DOMContentLoaded', () => App.init());
+
+</script>
+</body>
+</html>
