@@ -51,6 +51,7 @@ class XRSource {
     return this.feat;
   }
   centerHit() { return this.lastCenterHit; }
+  centerRay() { return this.lastCenterRay; }
   stop() { if (!this.ended && this.session) { this.ended = true; try { this.session.end(); } catch (e) { } } }
   onFrame(time, frame) {
     if (this.ended) return;
@@ -65,6 +66,10 @@ class XRSource {
     const view = pose.views[0], vp = layer.getViewport(view);
     gl.viewport(vp.x, vp.y, vp.width, vp.height);
     const m = view.transform.matrix, { R, C } = M4.toRC(m), P = view.projectionMatrix;
+    { // sight line through the centre dot (the projection can be slightly off-centre)
+      const dc = [P[8] / P[0], P[9] / P[5], -1], D = [R[0] * dc[0] + R[1] * dc[1] + R[2] * dc[2], R[3] * dc[0] + R[4] * dc[1] + R[5] * dc[2], R[6] * dc[0] + R[7] * dc[1] + R[8] * dc[2]];
+      const l = Math.hypot(D[0], D[1], D[2]); this.lastCenterRay = { C: C.slice(), D: [D[0] / l, D[1] / l, D[2] / l] };
+    }
     // centre hit (pile surface) and ground hits
     let centerHit = null;
     if (this.hitCenter) {
@@ -124,7 +129,7 @@ class XRSource {
   drawMarks(mvp, dpr) {
     const cap = this.cap, v = [], c = [];
     const gy = cap.groundY !== undefined && cap.groundY !== null ? cap.groundY : (cap.startC ? cap.startC[1] - 1.45 : 0);
-    if (cap.startC && cap.phase === 'walk') {
+    if (cap.startC && cap.phase === 'walk' && !cap.partial) {
       const x = cap.startC[0], z = cap.startC[2];
       for (let h = 0; h <= 2.0; h += 0.06) { v.push(x, gy + h, z); c.push(1, 0.83, 0, 0.95); }
     }
@@ -132,7 +137,7 @@ class XRSource {
       for (let k = -4; k <= 4; k++) { v.push(p[0] + k * 0.03, p[1] + 0.01, p[2]); c.push(1, 0.3, 1, 1); v.push(p[0], p[1] + 0.01, p[2] + k * 0.03); c.push(1, 0.3, 1, 1); }
     }
     if (v.length) this.dots.drawLines(new Float32Array(v), new Float32Array(c), mvp, this.gl.POINTS);
-    if (cap.startC && cap.phase === 'walk') {
+    if (cap.startC && cap.phase === 'walk' && !cap.partial) {
       const x = cap.startC[0], z = cap.startC[2], top = gy + 2.0;
       const f = new Float32Array([x, top, z, x + 0.45, top - 0.14, z, x, top - 0.28, z]);
       this.dots.drawLines(f, new Float32Array([1, 0.83, 0, 0.9, 1, 0.83, 0, 0.9, 1, 0.83, 0, 0.9]), mvp, this.gl.TRIANGLES);

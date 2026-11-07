@@ -34,11 +34,15 @@ let pts = new Float32Array(4 * 8192), nPts = 0, newPts = [];
 let flipMode = 1, flipLocked = false, flipStats = null, flipCount = 0;
 let nDepthFrames = 0, nDepthSamples = 0;
 let camPath = [];
+let topRays = [];
 let lastProgress = 0, lastMiniT = -1e9, procTimes = [], lostCount = 0;
 let occ = null, best = null, bx = null, by = null;
 
 function reset(cfg) {
   if (cfg) for (const k in cfg) if (k in CFG) CFG[k] = cfg[k];
+  CFG.commitSigma = Math.max(0.15, 0.5 * CFG.cellSize);
+  CFG.greenSigma = Math.max(0.05, 0.2 * CFG.cellSize);
+  CFG.maxTrackSpan = CFG.cellSize > 0.15 ? 22 : 15;
   W = 0; H = 0; pyrA = pyrB = null; hasPrev = false; prevGrayFi = -1;
   tracks = []; nextId = 1; medFX = medFY = 0; fastThr = CFG.fastThr;
   fr = { R: [], C: [], I: [], t: [] };
@@ -47,7 +51,11 @@ function reset(cfg) {
   flipMode = (cfg && cfg.flipMode !== undefined) ? cfg.flipMode : 1;
   flipLocked = !!(cfg && cfg.flipLocked); flipStats = null; flipCount = 0;
   nDepthFrames = 0; nDepthSamples = 0; camPath = []; lastProgress = 0; lastMiniT = -1e9;
-  procTimes = []; lostCount = 0;
+  procTimes = []; lostCount = 0; topRays = [];
+}
+/* "Top edge" tap: the phone's position and viewing direction, aimed at the pile's skyline */
+function topEdge(C, D) {
+  if (started && C && D) topRays.push({ C: [C[0], C[1], C[2]], D: [D[0], D[1], D[2]] });
 }
 
 /* ------------------------------------------------------------------ */
@@ -821,47 +829,320 @@ function biharmonicFill(U, Zs, obs, region, nx, nz) {
   for (let q = 0; q < m; q++) Zs[U[q]] = x[q];
 }
 
-function finish(opts) {
-  opts = opts || {};
-  for (const tr of tracks) commit(tr);
-  const warnings = [];
-  const g = grid;
-  if (!started || !g || g.bb[2] < 0) return { msg: { type: 'result', error: 'No 3D data was captured. Make sure tracking works and walk around the pile.' }, transfer: [] };
-  const N = g.N, s = g.s, mg = 8;
-  const i0 = Math.max(0, g.bb[0] - mg), k0 = Math.max(0, g.bb[1] - mg);
-  const i1 = Math.min(N - 1, g.bb[2] + mg), k1 = Math.min(N - 1, g.bb[3] + mg);
+function errResult(m) { return { msg: { type: 'result', error: m }, transfer: [] }; }
+
+/* copy a window of the live grid into flat arrays (H = height, obs = measured) */
+function gridBox(i0, k0, i1, k1) {
+  const g = grid, N = g.N, s = g.s;
+  i0 = Math.max(0, i0); k0 = Math.max(0, k0); i1 = Math.min(N - 1, i1); k1 = Math.min(N - 1, k1);
   const nx = i1 - i0 + 1, nz = k1 - k0 + 1, n = nx * nz;
   const H = new Float32Array(n), Wt = new Float32Array(n), obs = new Uint8Array(n);
   for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
     const c = (k0 + k) * N + (i0 + i), j = k * nx + i, w = g.weight(c);
     if (w >= CFG.minCellW) { H[j] = g.height(c); Wt[j] = w; obs[j] = 1; } else H[j] = NaN;
   }
-  const X0 = g.x0 + (i0 + 0.5) * s, Z0 = g.z0 + (k0 + 0.5) * s;
+  return { i0, k0, i1, k1, nx, nz, n, H, Wt, obs, s, X0: g.x0 + (i0 + 0.5) * s, Z0: g.z0 + (k0 + 0.5) * s };
+}
+
+/* Symmetric completion for piles that could not be walked all the way round.
+   The walking path runs along the pile's sides, so its dominant direction
+   (mod 90°) gives the orientation; u = long axis, v = across it.
+   The centre line v0 comes from (A) slices where both toes were seen (an end
+   was walked), (C) a known base width, or (B) the crest of a peaked pile. */
+function findSymmetry(A, Z, zt, opts) {
+  const { nx, nz, s, X0, Z0, obs, n } = A, nP = camPath.length / 5;
+  // pile cells (for toes and crest) and pile body cells clearly above toe height
+  // (for the pile's extent, so stray low cells near the walking path don't stretch it)
+  const zb = Math.max(0.25, 4 * zt), pile = [], body = [];
+  for (let j = 0; j < n; j++) if (obs[j] && Z[j] > zt) { pile.push(j); if (Z[j] > zb) body.push(j); }
+  if (body.length < 30) return null;
+  const inPile = new Uint8Array(n); for (const j of pile) inPile[j] = 1;
+  const xy = (j) => [X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s];
+  let sc = 0, ss = 0, sw = 0, lx = camPath[0], lz = camPath[2];
+  for (let q = 1; q < nP; q++) {
+    const x = camPath[q * 5], z = camPath[q * 5 + 2], dx = x - lx, dz = z - lz, l = Math.hypot(dx, dz);
+    if (l < 0.5) continue;
+    const f = 4 * Math.atan2(dz, dx);
+    sc += l * Math.cos(f); ss += l * Math.sin(f); sw += l; lx = x; lz = z;
+  }
+  let th;
+  if (sw > 2 && Math.hypot(sc, ss) / sw > 0.35) th = Math.atan2(ss, sc) / 4;
+  else {
+    let mx = 0, mz = 0; for (const j of body) { const p = xy(j); mx += p[0]; mz += p[1]; } mx /= body.length; mz /= body.length;
+    let cxx = 0, cxz = 0, czz = 0; for (const j of body) { const p = xy(j), x = p[0] - mx, z = p[1] - mz; cxx += x * x; cxz += x * z; czz += z * z; }
+    th = 0.5 * Math.atan2(2 * cxz, cxx - czz);
+  }
+  const range = (t) => { // trimmed extent of the pile body along direction t
+    const c = Math.cos(t), sn = Math.sin(t), us = body.map(j => { const p = xy(j); return p[0] * c + p[1] * sn; }).sort((x, y) => x - y);
+    const q = Math.floor(us.length * 0.003); return [us[q], us[us.length - 1 - q]];
+  };
+  const r0 = range(th), r1 = range(th + Math.PI / 2);
+  if (r1[1] - r1[0] > r0[1] - r0[0]) th += Math.PI / 2;
+  const c = Math.cos(th), sn = Math.sin(th);
+  const [umin, umax] = range(th);
+  const bw = Math.max(0.5, 1.01 * s), nS = Math.max(1, Math.ceil((umax - umin) / bw));
+  const sl = Array.from({ length: nS }, (_, q) => ({ pv: [], pz: [], gv: [], u: umin + (q + 0.5) * bw }));
+  for (let j = 0; j < n; j++) {
+    if (!obs[j]) continue;
+    const p = xy(j), u = p[0] * c + p[1] * sn, v = -p[0] * sn + p[1] * c;
+    const b = Math.floor((u - umin) / bw); if (b < 0 || b >= nS) continue;
+    if (inPile[j]) { sl[b].pv.push(v); sl[b].pz.push(Z[j]); } else sl[b].gv.push(v);
+  }
+  const Am = [], Bm = [], lo = [], hi = [], loMid = [], hiMid = [];
+  let maxW = 0;
+  for (const S of sl) if (S.pv.length >= 4) { const a = S.pv.slice().sort((x, y) => x - y); maxW = Math.max(maxW, a[a.length - 2] - a[1]); }
+  for (const S of sl) {
+    if (S.pv.length < 6) continue;
+    const ord = S.pv.map((v, q) => q).sort((x, y) => S.pv[x] - S.pv[y]);
+    const m = ord.length, vmin = S.pv[ord[1]], vmax = S.pv[ord[m - 2]];
+    lo.push(vmin); hi.push(vmax);
+    if (Math.abs(S.u - (umin + umax) / 2) < 0.3 * (umax - umin)) { loMid.push(vmin); hiMid.push(vmax); }
+    let zmax = 0; for (const z of S.pz) if (z > zmax) zmax = z;
+    // both ends of the slice reach down to toe height (the lowest of the few
+    // outermost cells on each side), so the slice spans the pile toe to toe
+    const toeZ = Math.max(0.3, 0.15 * zmax, s), k = Math.max(1, Math.min(4, Math.floor(m / 4)));
+    let loZ = 1e9, hiZ = 1e9;
+    for (let q = 0; q < k; q++) { loZ = Math.min(loZ, S.pz[ord[q]]); hiZ = Math.min(hiZ, S.pz[ord[m - 1 - q]]); }
+    if (loZ <= toeZ && hiZ <= toeZ && vmax - vmin >= 0.5 * maxW && zmax > 2.5 * toeZ) Am.push((vmin + vmax) / 2);
+    let bi = 0; for (let q = 1; q < S.pz.length; q++) if (S.pz[q] > S.pz[bi]) bi = q;
+    const vc = S.pv[bi], zc = S.pz[bi];
+    let below = false, above = false;
+    for (let q = 0; q < S.pv.length; q++) {
+      const dv = S.pv[q] - vc;
+      if (S.pz[q] < zc - 0.15 && Math.abs(dv) < 2.5) { if (dv < -0.4) below = true; else if (dv > 0.4) above = true; }
+    }
+    if (below && above) Bm.push(vc);
+  }
+  let pathV = 0; for (let q = 0; q < nP; q++) pathV += -camPath[q * 5] * sn + camPath[q * 5 + 2] * c; pathV /= nP;
+  const pileV = median(lo.concat(hi));
+  let v0 = null, method = null, rel = 0.10;
+  if (Am.length >= 3) { v0 = median(Am); method = 'seeing both toes at the walked end'; rel = 0.08; }
+  else if (opts.baseWidth > 0 && lo.length) {
+    const L = loMid.length >= 3 ? loMid : lo, Hh = hiMid.length >= 3 ? hiMid : hi;
+    v0 = pathV < pileV ? median(L) + opts.baseWidth / 2 : median(Hh) - opts.baseWidth / 2; method = 'the base width you entered'; rel = 0.06;
+  }
+  else if (opts.top !== 'flat' && Bm.length >= 3) { v0 = median(Bm); method = 'the crest line (peaked pile)'; rel = 0.15; }
+  if (v0 === null) return null;
+  // middle of the length (u0): the walked long side was seen end to end, including
+  // both of its corners, so a band of the pile just inside that side's toe is
+  // symmetric about the middle even when the far end itself was hardly seen
+  let u0 = (umin + umax) / 2;
+  const nearLow = pathV < v0, vNear = nearLow ? median(loMid.length >= 3 ? loMid : lo) : median(hiMid.length >= 3 ? hiMid : hi), half = Math.abs(v0 - vNear), mids = [];
+  if (half > 1) {
+    // bands close to the toe: both corners of the walked side are seen well there
+    for (const [f0, f1] of [[0.04, 0.10], [0.07, 0.13], [0.10, 0.16], [0.13, 0.19]]) {
+      const us = [];
+      for (const j of pile) {
+        const p = xy(j), v = -p[0] * sn + p[1] * c, d = nearLow ? v - vNear : vNear - v;
+        if (d >= f0 * half && d < f1 * half) us.push(p[0] * c + p[1] * sn);
+      }
+      if (us.length < 20) continue;
+      us.sort((x, y) => x - y);
+      const q = Math.floor(us.length * 0.005);
+      mids.push((us[q] + us[us.length - 1 - q]) / 2);
+    }
+    if (mids.length) u0 = median(mids);
+  }
+  return { th, c, sn, u0, v0, method, rel, umin, umax, nA: Am.length, nB: Bm.length, mids };
+}
+
+/* fill unmeasured cells with the measured height at their mirror image(s) */
+function applySymmetry(A, Z, sym, mir) {
+  const { nx, nz, s, X0, Z0, obs } = A, { c, sn, u0, v0 } = sym;
+  const sample = (x, z) => {
+    const fi = (x - X0) / s, fk = (z - Z0) / s, i = Math.floor(fi), k = Math.floor(fk);
+    if (i < 0 || k < 0 || i >= nx - 1 || k >= nz - 1) return NaN;
+    const ax = fi - i, az = fk - k; let sv = 0, sw = 0;
+    const add = (ii, kk, w) => { const j = kk * nx + ii; if (obs[j] && w > 0) { sv += w * Z[j]; sw += w; } };
+    add(i, k, (1 - ax) * (1 - az)); add(i + 1, k, ax * (1 - az)); add(i, k + 1, (1 - ax) * az); add(i + 1, k + 1, ax * az);
+    return sw >= 0.5 ? sv / sw : NaN;
+  };
+  let nm = 0;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i; if (obs[j]) continue;
+    const x = X0 + i * s, z = Z0 + k * s, u = x * c + z * sn, v = -x * sn + z * c;
+    const cands = [[u, 2 * v0 - v], [2 * u0 - u, v], [2 * u0 - u, 2 * v0 - v]];
+    for (const q of cands) {
+      const val = sample(q[0] * c - q[1] * sn, q[0] * sn + q[1] * c);
+      if (val === val) { Z[j] = val; mir[j] = 1; nm++; break; }
+    }
+  }
+  return nm;
+}
+
+/* typical slope of the measured pile sides (rise per metre of run) */
+function slopeEstimate(A, Zs, known, region, topKnown) {
+  const { nx, nz, s } = A, g = [], lo = 0.25 * topKnown, hi = 0.9 * topKnown;
+  for (let k = 1; k < nz - 1; k++) for (let i = 1; i < nx - 1; i++) {
+    const j = k * nx + i;
+    if (!region[j] || !known[j] || !(Zs[j] > lo && Zs[j] < hi)) continue;
+    if (!known[j - 1] || !known[j + 1] || !known[j - nx] || !known[j + nx]) continue;
+    g.push(Math.hypot((Zs[j + 1] - Zs[j - 1]) / (2 * s), (Zs[j + nx] - Zs[j - nx]) / (2 * s)));
+  }
+  if (g.length < 30) return Math.tan(35 * DEG);
+  return Math.max(Math.tan(22 * DEG), Math.min(Math.tan(45 * DEG), median(g)));
+}
+
+/* "Top edge" taps: each is a sight line from the phone to the pile's skyline.
+   The measured slope under it, continued straight up, meets the sight line at
+   the top edge, which gives the pile's height there. */
+function topFromRays(A, Zs, known, pl, rays) {
+  const { nx, nz, s, X0, Z0 } = A, out = [];
+  const hAt = (x, z) => {
+    const i = Math.round((x - X0) / s), k = Math.round((z - Z0) / s);
+    if (i < 0 || k < 0 || i >= nx || k >= nz) return NaN;
+    const j = k * nx + i; return known[j] ? Zs[j] : NaN;
+  };
+  const step = 0.7 * s, maxGap = Math.max(2, 6 * s);
+  for (const r of rays) {
+    const C = r.C, D = r.D, lh = Math.hypot(D[0], D[2]);
+    if (lh < 0.3) continue;
+    const ux = D[0] / lh, uz = D[2] / lh;
+    const tanT = D[1] / lh - (pl.a * ux + pl.b * uz);       // rise of the sight line per metre, above the ground plane
+    const hc = C[1] - (pl.a * C[0] + pl.b * C[2] + pl.c);    // phone height above the ground
+    const prof = []; let toe = false, gap = 0;
+    for (let d = 0; d < 80; d += step) {                     // ground, toe, measured slope, then the unseen part
+      const h = hAt(C[0] + ux * d, C[2] + uz * d);
+      if (h !== h) { if (toe && (gap += step) > maxGap) break; continue; }
+      gap = 0;
+      if (!toe) { if (h > 0.3) toe = true; else continue; }
+      prof.push([d, h]);
+    }
+    if (prof.length < 6) continue;
+    let iMax = 0; for (let q = 1; q < prof.length; q++) if (prof[q][1] > prof[iMax][1]) iMax = q;
+    const hMax = prof[iMax][1], dMax = prof[iMax][0];
+    let S = 0, Sd = 0, Sh = 0, Sdd = 0, Sdh = 0, dLo = 1e9;
+    for (let q = 0; q <= iMax; q++) {
+      const d = prof[q][0], h = prof[q][1]; if (h < 0.4 * hMax) continue;
+      S++; Sd += d; Sh += h; Sdd += d * d; Sdh += d * h; if (d < dLo) dLo = d;
+    }
+    if (S < 4 || dMax - dLo < 1) continue;
+    const m = (S * Sdh - Sd * Sh) / (S * Sdd - Sd * Sd), q0 = (Sh - m * Sd) / S;
+    if (!(m > 0.2) || m - tanT < 0.05) continue;
+    const dStar = (hc - q0) / (m - tanT), Hs = hc + tanT * dStar;
+    if (dStar < dMax - 1.5 || dStar > dMax + 50 || Hs < hMax - 0.5) continue;
+    out.push({ H: Hs, d: dStar, slope: m, hMax });
+  }
+  return out;
+}
+
+/* the highest surface that rises no faster than the measured slope from any
+   measured point (and from the pile outline at ground level): the shape a pile
+   takes at its angle of repose. Used to continue slopes up to a known top. */
+function reposeEnvelope(Zs, known, region, nx, nz, s, tanA) {
+  const n = nx * nz, F = new Float32Array(n), seed = new Uint8Array(n);
+  // only well-supported cells anchor the slopes (a stray low point would
+  // otherwise dig a cone-shaped pit around itself)
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i;
+    if (!region[j]) { F[j] = 0; seed[j] = 1; continue; }
+    F[j] = Infinity;
+    if (!known[j]) continue;
+    let c = 0;
+    for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dk) continue;
+      const a = i + di, b = k + dk;
+      if (a >= 0 && b >= 0 && a < nx && b < nz && known[b * nx + a]) c++;
+    }
+    if (c >= 6) { F[j] = Zs[j]; seed[j] = 1; }
+  }
+  const w1 = tanA * s, w2 = w1 * Math.SQRT2, w3 = w1 * Math.sqrt(5);
+  const fw = [[-1, 0, w1], [0, -1, w1], [-1, -1, w2], [1, -1, w2], [-2, -1, w3], [-1, -2, w3], [1, -2, w3], [2, -1, w3]];
+  const bk = fw.map(o => [-o[0], -o[1], o[2]]);
+  for (let pass = 0; pass < 8; pass++) {
+    let ch = 0;
+    for (const dir of [1, -1]) {
+      const offs = dir > 0 ? fw : bk;
+      for (let kk = 0; kk < nz; kk++) {
+        const k = dir > 0 ? kk : nz - 1 - kk;
+        for (let ii = 0; ii < nx; ii++) {
+          const i = dir > 0 ? ii : nx - 1 - ii, j = k * nx + i;
+          if (seed[j]) continue;
+          let v = F[j];
+          for (const o of offs) {
+            const a = i + o[0], b = k + o[1]; if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            const c = F[b * nx + a] + o[2]; if (c < v) v = c;
+          }
+          if (v < F[j]) { F[j] = v; ch++; }
+        }
+      }
+    }
+    if (!ch) break;
+  }
+  return F;
+}
+
+function finish(opts) {
+  opts = opts || {};
+  const partial = opts.walk === 'partial', flatTop = opts.top === 'flat';
+  for (const tr of tracks) commit(tr);
+  const warnings = [], notes = [];
+  const g = grid;
+  if (!started || !g || g.bb[2] < 0) return errResult('No 3D data was captured. Make sure tracking works and walk around the pile.');
+  const N = g.N, s = g.s, mg = 8;
   const nP = camPath.length / 5;
-  if (nP < 10) return { msg: { type: 'result', error: 'The walk was too short.' }, transfer: [] };
+  if (nP < 10) return errResult('The walk was too short.');
   const ys = []; for (let q = 0; q < nP; q++) ys.push(camPath[q * 5 + 1]);
   const camY = median(ys);
   const progress = opts.progress !== undefined ? opts.progress : camPath[(nP - 1) * 5 + 4];
 
-  /* ground plane */
-  const pl = fitGround(H, obs, Wt, nx, nz, X0, Z0, s, camY);
-  if (!pl) return { msg: { type: 'result', error: 'Could not find the ground around the pile. Keep some ground in view while walking.' }, transfer: [] };
+  /* ground plane, from what was measured */
+  let A = gridBox(g.bb[0] - mg, g.bb[1] - mg, g.bb[2] + mg, g.bb[3] + mg);
+  const pl = fitGround(A.H, A.obs, A.Wt, A.nx, A.nz, A.X0, A.Z0, s, camY);
+  if (!pl) return errResult('Could not find the ground around the pile. Keep some ground in view while walking.');
   const base = (x, z) => pl.a * x + pl.b * z + pl.c;
-  const Z = new Float32Array(n);
-  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
-    const j = k * nx + i;
-    Z[j] = obs[j] ? H[j] - base(X0 + i * s, Z0 + k * s) : NaN;
+  const zt = Math.max(0.06, 2.5 * pl.rms);
+  const zOf = (B) => {
+    const Z = new Float32Array(B.n);
+    for (let k = 0; k < B.nz; k++) for (let i = 0; i < B.nx; i++) { const j = k * B.nx + i; Z[j] = B.obs[j] ? B.H[j] - base(B.X0 + i * s, B.Z0 + k * s) : NaN; }
+    return Z;
+  };
+  let Z = zOf(A);
+
+  /* symmetric completion (partial walk) */
+  let sym = null;
+  if (partial) {
+    sym = findSymmetry(A, Z, zt, opts);
+    if (sym) {
+      // grow the window so it also holds the mirror image of what was measured
+      const corners = [[A.X0, A.Z0], [A.X0 + (A.nx - 1) * s, A.Z0], [A.X0, A.Z0 + (A.nz - 1) * s], [A.X0 + (A.nx - 1) * s, A.Z0 + (A.nz - 1) * s]];
+      let xa = 1e9, xb = -1e9, za = 1e9, zb = -1e9;
+      for (const [x, z] of corners) {
+        const u = x * sym.c + z * sym.sn, v = -x * sym.sn + z * sym.c;
+        for (const [uu, vv] of [[u, v], [u, 2 * sym.v0 - v], [2 * sym.u0 - u, v], [2 * sym.u0 - u, 2 * sym.v0 - v]]) {
+          const xx = uu * sym.c - vv * sym.sn, zz = uu * sym.sn + vv * sym.c;
+          xa = Math.min(xa, xx); xb = Math.max(xb, xx); za = Math.min(za, zz); zb = Math.max(zb, zz);
+        }
+      }
+      const ci = (x) => Math.floor((x - g.x0) / s), ck = (z) => Math.floor((z - g.z0) / s);
+      A = gridBox(Math.min(ci(xa), A.i0) - 2, Math.min(ck(za), A.k0) - 2, Math.max(ci(xb), A.i1) + 2, Math.max(ck(zb), A.k1) + 2);
+      Z = zOf(A);
+    } else warnings.push('Could not place the hidden half: the pile\'s centre line was not found. Walk along one end as well, or enter the base width. The volume below only includes what was seen and is too low.');
   }
+  const { nx, nz, n, obs, X0, Z0 } = A;
+  const mir = new Uint8Array(n);
+  if (sym) applySymmetry(A, Z, sym, mir);
+  const known = new Uint8Array(n);
+  for (let j = 0; j < n; j++) known[j] = obs[j] || mir[j];
+
   let pcx = 0, pcz = 0;
   for (let q = 0; q < nP; q++) { pcx += camPath[q * 5]; pcz += camPath[q * 5 + 2]; }
   pcx /= nP; pcz /= nP;
   const camH = camY - base(pcx, pcz);
   if (camH < 0.7 || camH > 2.4) warnings.push('Ground level looks unusual (phone was ' + camH.toFixed(2) + ' m above it). Check that enough ground around the pile was in view.');
 
-  /* walking loop -> region that can contain the pile */
+  /* the region that can contain the pile: inside the walking loop (for a
+     partial walk, the loop is completed with the mirrored path) */
   const hullPts = [];
-  for (let q = 0; q < nP; q += 3) hullPts.push([camPath[q * 5], camPath[q * 5 + 2]]);
-  for (let j = 0; j < n; j += 3) if (obs[j] && Z[j] > 0.3) hullPts.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
+  for (let q = 0; q < nP; q += 3) {
+    const x = camPath[q * 5], z = camPath[q * 5 + 2];
+    hullPts.push([x, z]);
+    if (sym) {
+      const u = x * sym.c + z * sym.sn, v = -x * sym.sn + z * sym.c;
+      for (const [uu, vv] of [[u, 2 * sym.v0 - v], [2 * sym.u0 - u, v], [2 * sym.u0 - u, 2 * sym.v0 - v]]) hullPts.push([uu * sym.c - vv * sym.sn, uu * sym.sn + vv * sym.c]);
+    }
+  }
+  for (let j = 0; j < n; j += 3) if (known[j] && Z[j] > 0.3) hullPts.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
   const hull = convexHull(hullPts);
   const inside = new Uint8Array(n);
   const hn = hull.length;
@@ -876,10 +1157,8 @@ function finish(opts) {
   }
 
   /* pile candidates */
-  const zt = Math.max(0.06, 2.5 * pl.rms);
   const pileObs = new Uint8Array(n);
-  for (let j = 0; j < n; j++) pileObs[j] = (obs[j] && Z[j] > zt) ? 1 : 0;
-  // chamfer distance (in cells) from observed pile cells
+  for (let j = 0; j < n; j++) pileObs[j] = (known[j] && Z[j] > zt) ? 1 : 0;
   const dist = chamfer(pileObs, nx, nz);
   // Unseen cells enclosed by the pile (typically its top) always belong to it.
   // Unseen cells that connect to open ground are only accepted close to the toe.
@@ -890,7 +1169,7 @@ function finish(opts) {
   let eh = 0, et = 0;
   for (let j = 0; j < n; j++) {
     if (barrier[j]) continue;
-    if (!inside[j] || (obs[j] && Z[j] <= zt)) { ext[j] = 1; eq[et++] = j; }
+    if (!inside[j] || (known[j] && Z[j] <= zt)) { ext[j] = 1; eq[et++] = j; }
   }
   while (eh < et) {
     const q = eq[eh++], qi = q % nx, qk = (q / nx) | 0;
@@ -900,10 +1179,22 @@ function finish(opts) {
     if (qk < nz - 1 && !barrier[q + nx] && !ext[q + nx]) { ext[q + nx] = 1; eq[et++] = q + nx; }
   }
   const nearToe = 0.6 / s;
-  const cand = new Uint8Array(n);
-  for (let j = 0; j < n; j++) {
-    cand[j] = inside[j] && (pileObs[j] || (!obs[j] && (!ext[j] || dist[j] <= nearToe))) ? 1 : 0;
+  // with a partial walk the unseen middle of each end can leave a gap; anything
+  // inside the outline of the measured + mirrored pile belongs to the pile
+  let inPH = null;
+  if (sym) {
+    const pp = [];
+    for (let j = 0; j < n; j++) if (pileObs[j] && (j % 2 === 0)) pp.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
+    const ph = convexHull(pp), m = ph.length;
+    inPH = new Uint8Array(n);
+    if (m >= 3) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      const x = X0 + i * s, z = Z0 + k * s; let inn = true;
+      for (let e = 0; e < m && inn; e++) { const a = ph[e], b = ph[(e + 1) % m]; if ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]) < -1e-9) inn = false; }
+      inPH[k * nx + i] = inn ? 1 : 0;
+    }
   }
+  const cand = new Uint8Array(n);
+  for (let j = 0; j < n; j++) cand[j] = inside[j] && (pileObs[j] || (!known[j] && ((inPH && inPH[j]) || !ext[j] || dist[j] <= nearToe))) ? 1 : 0;
 
   /* connected components */
   const comp = new Int32Array(n).fill(-1), comps = [];
@@ -923,28 +1214,27 @@ function finish(opts) {
     }
     comps.push({ id, score, cnt });
   }
-  if (!comps.length) return { msg: { type: 'result', error: 'No pile found above the ground inside your walking loop.' }, transfer: [] };
+  if (!comps.length) return errResult('No pile found above the ground inside your walking loop.');
   comps.sort((a, b) => b.score - a.score);
   const main = comps[0].id;
   if (comps.length > 1 && comps[1].score > 0.1 * comps[0].score) warnings.push('Another heap or object inside your walking loop was left out of the volume.');
   const region = new Uint8Array(n);
   for (let j = 0; j < n; j++) region[j] = comp[j] === main ? 1 : 0;
 
-  /* light smoothing of measured heights: local plane fit (keeps slopes
+  /* light smoothing of known heights: local plane fit (keeps slopes
      unbiased, unlike a median), with a spike check first */
   const Zs = new Float32Array(n);
   const nb = new Float32Array(9), ndi = new Int8Array(9), ndk = new Int8Array(9);
   for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
     const j = k * nx + i;
-    if (!obs[j]) { Zs[j] = NaN; continue; }
+    if (!known[j]) { Zs[j] = NaN; continue; }
     if (!region[j]) { Zs[j] = Z[j]; continue; }
     let c = 0;
     for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
       const ii = i + di, kk = k + dk; if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
-      const q = kk * nx + ii; if (obs[q]) { nb[c] = Z[q]; ndi[c] = di; ndk[c] = dk; c++; }
+      const q = kk * nx + ii; if (known[q]) { nb[c] = Z[q]; ndi[c] = di; ndk[c] = dk; c++; }
     }
     if (c < 5) { Zs[j] = Z[j]; continue; }
-    // plane z = a + b*di + e*dk by least squares; drop the worst point if it is a spike
     let use = c, skip = -1;
     for (let pass = 0; pass < 2; pass++) {
       let S1 = 0, Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0, Sz = 0, Sxz = 0, Syz = 0;
@@ -964,54 +1254,121 @@ function finish(opts) {
     }
   }
 
-  /* fill unseen cells inside the pile (smooth membrane) */
+  /* top height: entered by the user, from "Top edge" taps, or the highest measured point */
+  // highest measured height: from all measured cells (topKnown), and from
+  // well-supported cells only (topDense). Sparse far-away dots do reach the top
+  // edge of a tall pile, but with a poorer 3D fix, so top-edge taps or an
+  // entered height take precedence over them.
+  let topKnown = 0, topDense = 0;
+  { const hz = [], ha = [];
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      const j = k * nx + i; if (!region[j] || !known[j]) continue;
+      ha.push(Zs[j]);
+      let c = 0;
+      for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dk) continue;
+        const a = i + di, b = k + dk;
+        if (a >= 0 && b >= 0 && a < nx && b < nz && known[b * nx + a]) c++;
+      }
+      if (c >= 6) hz.push(Zs[j]);
+    }
+    ha.sort((x, y) => x - y); hz.sort((x, y) => x - y);
+    topKnown = ha.length ? ha[Math.min(ha.length - 1, Math.floor(ha.length * 0.997))] : 0;
+    topDense = hz.length >= 50 ? hz[Math.min(hz.length - 1, Math.floor(hz.length * 0.995))] : topKnown; }
+  const tanA = slopeEstimate(A, Zs, known, region, topDense);
+  // how far from the walking line the highest measured points are: near the
+  // phone's measuring range (~8-10 m), the pile may well continue higher
+  let topReach = 0;
+  { const dd = [];
+    for (let j = 0; j < n; j++) {
+      if (!region[j] || !obs[j] || !(Zs[j] >= 0.95 * topDense)) continue;
+      const x = X0 + (j % nx) * s, z = Z0 + ((j / nx) | 0) * s; let b = 1e9;
+      for (let q = 0; q < nP; q += 2) { const dx = camPath[q * 5] - x, dz = camPath[q * 5 + 2] - z, d2 = dx * dx + dz * dz; if (d2 < b) b = d2; }
+      dd.push(Math.sqrt(b));
+    }
+    if (dd.length) topReach = median(dd); }
+  const taps = topRays.length ? topFromRays(A, Zs, known, pl, topRays) : [];
+  let Hcap = null, topSource = 'measured', sigH = 0;
+  if (opts.topHeight > 0) {
+    if (opts.topHeight < topDense - 0.5) warnings.push('The pile height you entered (' + opts.topHeight.toFixed(1) + ' m) is lower than the measured top (' + topDense.toFixed(1) + ' m), so the measured top was used.');
+    else { Hcap = opts.topHeight; topSource = 'entered'; sigH = 0.1; }
+  } else if (taps.length) {
+    const hs = taps.map(t => t.H), med = median(hs);
+    const spread = hs.length >= 2 ? 1.4826 * median(hs.map(h => Math.abs(h - med))) : 0.05 * med + 0.3;
+    Hcap = med; topSource = 'taps'; sigH = Math.max(0.15, 0.02 * med, spread / Math.sqrt(hs.length));
+  } else if (topRays.length) warnings.push('The top-edge taps could not be used: the slope below them was not measured. Tap from a side you walked along, with the lower slope in view.');
+
+  /* fill unseen cells inside the pile: a membrane first (this is the flat-top
+     answer: it never rises above the rim around the gap) ... */
   const U = [];
-  for (let j = 0; j < n; j++) if (region[j] && !obs[j]) U.push(j);
-  const val = (q) => (obs[q] ? Zs[q] : (region[q] ? Zs[q] : 0));
+  for (let j = 0; j < n; j++) if (region[j] && !known[j]) U.push(j);
+  const val = (q) => (known[q] ? Zs[q] : (region[q] ? Zs[q] : 0));
   for (const u of U) Zs[u] = NaN;
-  // initial fill by repeated neighbour averaging
   let pending = U.slice(), guard = 0;
-  while (pending.length && guard++ < 400) {
+  while (pending.length && guard++ < 600) {
     const next = [], upd = [];
     for (const u of pending) {
       const ui = u % nx, uk = (u / nx) | 0; let sm = 0, c = 0;
       const nbs = [ui > 0 ? u - 1 : -1, ui < nx - 1 ? u + 1 : -1, uk > 0 ? u - nx : -1, uk < nz - 1 ? u + nx : -1];
-      for (const q of nbs) { if (q < 0) { c++; continue; } const v = obs[q] ? Zs[q] : (region[q] ? Zs[q] : 0); if (v === v) { sm += v; c++; } }
+      for (const q of nbs) { if (q < 0) { c++; continue; } const v = val(q); if (v === v) { sm += v; c++; } }
       if (c) upd.push([u, sm / c]); else next.push(u);
     }
     for (const [u, v] of upd) Zs[u] = v;
     pending = next;
   }
   for (const u of pending) Zs[u] = 0;
-  for (let it = 0; it < 400 && U.length; it++) {
+  const tl = now();
+  for (let it = 0; it < 3000 && U.length; it++) {
     let md = 0;
     for (const u of U) {
       const ui = u % nx, uk = (u / nx) | 0;
       const a = ui > 0 ? val(u - 1) : 0, b = ui < nx - 1 ? val(u + 1) : 0, c = uk > 0 ? val(u - nx) : 0, d = uk < nz - 1 ? val(u + nx) : 0;
-      const nv = Zs[u] + 1.85 * ((a + b + c + d) * 0.25 - Zs[u]);
+      const nv = Zs[u] + 1.9 * ((a + b + c + d) * 0.25 - Zs[u]);
       md = Math.max(md, Math.abs(nv - Zs[u])); Zs[u] = nv;
     }
-    if (md < 2e-4) break;
+    if (md < 2e-4 || now() - tl > 4000) break;
   }
-  // then a thin-plate (biharmonic) fill: continues the slopes into the gap,
-  // so an unseen peak is rebuilt instead of being cut flat
-  if (U.length) biharmonicFill(U, Zs, obs, region, nx, nz);
+  // ... then a thin-plate (biharmonic) fill that continues the slopes into the
+  // gap, so an unseen peak is rebuilt. For a flat top, the continued slopes are
+  // capped at the highest measured height (the edge of the flat top).
+  // For a flat top, or a known top height, the measured slopes are continued
+  // straight up at their own angle until they meet the top (on tall piles the
+  // phone may measure only the lower part of the slope).
+  let topH = null, domeRise = 0, nCap = 0;
+  if (U.length) {
+    biharmonicFill(U, Zs, known, region, nx, nz);
+    if (flatTop || Hcap !== null) {
+      topH = Hcap !== null ? Math.max(Hcap, topDense) : topKnown;
+      const env = reposeEnvelope(Zs, known, region, nx, nz, s, tanA);
+      for (const u of U) if (env[u] > Zs[u]) Zs[u] = env[u];
+      for (const u of U) if (Zs[u] >= topH) { Zs[u] = topH; nCap++; }
+    } else {
+      // how far the rebuilt (unseen) top rises above the highest measured point
+      const fz = []; for (const u of U) fz.push(Zs[u]);
+      fz.sort((x, y) => x - y);
+      if (fz.length) domeRise = Math.max(0, fz[Math.min(fz.length - 1, Math.floor(fz.length * 0.997))] - topKnown);
+    }
+  }
 
-  /* volume and statistics. Gaps of up to ~25 cm between measured cells count
-     as interpolated (seen); anything further from a measurement is "unseen". */
+  /* volume and statistics. Cells within ~25 cm of a measurement count as
+     seen (interpolated); mirrored cells and filled cells are reported apart. */
   const dObs = chamfer(obs, nx, nz), near = Math.max(1.5, 0.25 / s);
-  let V = 0, Vfill = 0, Vinterp = 0, area = 0, maxH = 0, nFoot = 0, nFootObs = 0, mx = 0, mz = 0;
+  const dMir = sym ? chamfer(mir, nx, nz) : null;
+  let V = 0, Vfill = 0, Vinterp = 0, Vmir = 0, maxH = 0, nFoot = 0, nFootObs = 0, nFootMir = 0, mx = 0, mz = 0;
+  const cls = new Uint8Array(n); // 1 seen, 2 mirrored, 3 filled
   for (let j = 0; j < n; j++) {
     if (!region[j]) continue;
-    const z = Math.max(Zs[j], -0.05);
+    const z = Math.max(Zs[j], -0.05), zp = Math.max(z, 0) * s * s;
     V += z * s * s;
-    const seen = dObs[j] <= near;
-    if (!obs[j]) { if (seen) Vinterp += Math.max(z, 0) * s * s; else Vfill += Math.max(z, 0) * s * s; }
-    if (z > zt) { nFoot++; if (seen) nFootObs++; mx += X0 + (j % nx) * s; mz += Z0 + ((j / nx) | 0) * s; }
+    const seen = obs[j] || dObs[j] <= near, mirrored = !seen && (mir[j] || (dMir && dMir[j] <= near));
+    cls[j] = seen ? 1 : (mirrored ? 2 : 3);
+    if (!obs[j]) { if (seen) Vinterp += zp; else if (mirrored) Vmir += zp; else Vfill += zp; }
+    if (z > zt) { nFoot++; if (seen) nFootObs++; else if (mirrored) nFootMir++; mx += X0 + (j % nx) * s; mz += Z0 + ((j / nx) | 0) * s; }
     if (z > maxH) maxH = z;
   }
-  area = nFoot * s * s;
+  const area = nFoot * s * s;
   if (nFoot) { mx /= nFoot; mz /= nFoot; }
+  { const hz = []; for (let j = 0; j < n; j++) if (region[j]) hz.push(Zs[j]); hz.sort((x, y) => x - y); if (hz.length > 50) maxH = hz[Math.floor(hz.length * 0.997)]; }
   let cxx = 0, cxz = 0, czz = 0;
   for (let j = 0; j < n; j++) if (region[j] && Zs[j] > zt) {
     const x = X0 + (j % nx) * s - mx, z = Z0 + ((j / nx) | 0) * s - mz;
@@ -1025,53 +1382,60 @@ function finish(opts) {
     if (u < a0) a0 = u; if (u > a1) a1 = u; if (v < b0) b0 = v; if (v > b1) b1 = v;
   }
   const len = Math.max(a1 - a0, b1 - b0) + s, wid = Math.min(a1 - a0, b1 - b0) + s;
-  const coverage = nFoot ? nFootObs / nFoot : 0;
+  const coverage = nFoot ? nFootObs / nFoot : 0, mirrorShare = nFoot ? nFootMir / nFoot : 0;
 
   // loop consistency: same ground seen at the start and the end of the walk
   let lmS = 0, lmW = 0, lmN = 0;
   for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
-    const c = (k0 + k) * N + (i0 + i);
+    const c = (A.k0 + k) * N + (A.i0 + i);
     if (g.wA[c] >= 0.3 && g.wB[c] >= 0.3) {
       const w = Math.min(g.wA[c], g.wB[c]);
       lmS += w * Math.abs(g.hA[c] - g.hB[c]); lmW += w; lmN++;
     }
   }
-  const loopMis = lmN >= 20 ? lmS / lmW : null;
+  const loopMis = (!partial && lmN >= 20) ? lmS / lmW : null;
 
-  // ring just outside the pile: should sit on the base plane
-  const ring = new Uint8Array(n);
-  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
-    const j = k * nx + i; if (region[j]) continue;
-    let near = false;
-    for (let dk = -3; dk <= 3 && !near; dk++) for (let di = -3; di <= 3; di++) {
-      const ii = i + di, kk = k + dk; if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
-      if (region[kk * nx + ii]) { near = true; break; }
-    }
-    if (near && obs[j]) ring[j] = 1;
-  }
+  // ring of measured ground just outside the pile: should sit on the base plane
   let rS = 0, rS2 = 0, rN = 0;
-  for (let j = 0; j < n; j++) if (ring[j]) { rS += Z[j]; rS2 += Z[j] * Z[j]; rN++; }
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i; if (region[j] || !obs[j]) continue;
+    let nearR = false;
+    for (let dk = -3; dk <= 3 && !nearR; dk++) for (let di = -3; di <= 3; di++) {
+      const ii = i + di, kk = k + dk; if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
+      if (region[kk * nx + ii]) { nearR = true; break; }
+    }
+    if (nearR) { rS += Z[j]; rS2 += Z[j] * Z[j]; rN++; }
+  }
   const ringMean = rN ? rS / rN : 0, ringRms = rN ? Math.sqrt(Math.max(0, rS2 / rN)) : 0;
 
   /* uncertainty, in plain terms: what could make the number wrong */
   const relScale = opts.scaleFixed ? 0.003 : 0.015;
   const eScale = 3 * relScale * V;
-  const eFill = 0.12 * Vfill + 0.02 * Vinterp;
+  const eFill = (flatTop ? 0.10 : 0.12) * Vfill + 0.02 * Vinterp + sigH * nCap * s * s;
+  const eMirror = sym ? sym.rel * Vmir : 0;
   const eBase = (Math.abs(ringMean) * 0.5 + (rN ? ringRms / Math.sqrt(rN) : 0.02) + 0.008) * area;
   const eLoop = loopMis !== null ? 0.4 * loopMis * area : 0.02 * area;
-  const sigma = Math.sqrt(eScale * eScale + eFill * eFill + eBase * eBase + eLoop * eLoop);
+  const sigma = Math.sqrt(eScale * eScale + eFill * eFill + eMirror * eMirror + eBase * eBase + eLoop * eLoop);
 
-  if (progress < 0.95) warnings.push('The loop around the pile was not closed (' + Math.round(progress * 100) + '% of the way round). The unseen side was filled in by estimation.');
-  if (coverage < 0.85) warnings.push(Math.round((1 - coverage) * 100) + '% of the pile surface was not seen directly and was filled in.');
-  if (Math.abs(ringMean) > 0.08 || ringRms > 0.12) warnings.push('The ground around the pile is uneven or sloping, so the base level is less certain.');
+  const pct = (x) => Math.round(V > 0 ? x / V * 100 : 0);
+  if (!partial && progress < 0.95) warnings.push('The loop around the pile was not closed (' + Math.round(progress * 100) + '% of the way round). The unseen side was filled in by estimation. For piles you cannot walk round, choose "Only 1–2 sides".');
+  if (sym) notes.push('Symmetric pile assumed: ' + pct(Vmir) + '% of the volume is a mirror image of the measured side(s); the centre line was found from ' + sym.method + '.');
+  const topFrom = topSource === 'entered' ? 'the pile height you entered' : (topSource === 'taps' ? 'your ' + taps.length + ' top-edge tap' + (taps.length > 1 ? 's' : '') + (taps.length > 1 ? ' (they agree within ±' + ((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2).toFixed(1) + ' m)' : '') : 'the highest measured height');
+  if (topSource === 'measured' && flatTop && topReach > 8 && Vfill > 0.1 * V) warnings.push('The highest point measured is ' + topKnown.toFixed(1) + ' m, about ' + Math.round(topReach) + ' m from where you walked — near the phone\'s measuring range. If the pile is taller than ' + topKnown.toFixed(1) + ' m, the volume is too low: measure again tapping Top edge 2–3 times along the walk, or enter the pile height.');
+  if (flatTop && Vfill > 0.02 * V) notes.push('Flat top assumed where the top could not be seen (' + pct(Vfill) + '% of the volume), at ' + (topH || maxH).toFixed(2) + ' m from ' + topFrom + '.' + (topSource === 'measured' ? ' If the pile is taller than that, tap Top edge during the walk or enter the pile height.' : ''));
+  if (!flatTop && Hcap !== null && Vfill > 0.02 * V) notes.push('The unseen top was rebuilt up to ' + topH.toFixed(2) + ' m, from ' + topFrom + '.');
+  if (!flatTop && Vfill > 0.15 * V && domeRise > Math.max(0.3, 0.1 * maxH)) warnings.push(pct(Vfill) + '% of the volume was not seen and was filled in as a rounded top that rises ' + domeRise.toFixed(1) + ' m above the highest point measured. If the pile has a flat top, choose "Flat"; if it is a tall peaked pile, tap Top edge at its peak during the walk.');
+  else if (!flatTop && Hcap === null && Vfill > 0.15 * V) notes.push(pct(Vfill) + '% of the volume was not seen and was filled in by continuing the measured slopes up to the top.');
+  else if (!partial && !flatTop && coverage < 0.85) warnings.push(Math.round((1 - coverage) * 100) + '% of the pile surface was not seen directly and was filled in.');
+  if (!(partial && !sym) && (Math.abs(ringMean) > 0.08 || ringRms > 0.12)) warnings.push('The ground around the pile is uneven or sloping, so the base level is less certain.');
   if (loopMis !== null && loopMis > 0.08) warnings.push('Tracking drifted a little during the walk (' + Math.round(loopMis * 100) + ' cm mismatch where the loop closed).');
   if (nPts < 300 && nDepthFrames < 30) warnings.push('Very little 3D data was collected.');
 
-  /* outputs for the 3D view */
+  /* outputs for the 3D view: mask bit0 pile, bit1 seen, bit2 mirrored */
   const mask = new Uint8Array(n);
-  for (let j = 0; j < n; j++) mask[j] = (region[j] ? 1 : 0) | (dObs[j] <= near ? 2 : 0);
+  for (let j = 0; j < n; j++) mask[j] = (region[j] ? 1 : 0) | ((region[j] ? cls[j] === 1 : dObs[j] <= near) ? 2 : 0) | ((region[j] ? cls[j] === 2 : mir[j]) ? 4 : 0);
   const Zout = new Float32Array(n);
-  for (let j = 0; j < n; j++) Zout[j] = region[j] ? Zs[j] : (obs[j] ? Z[j] : (dObs[j] <= near ? 0 : NaN));
+  for (let j = 0; j < n; j++) Zout[j] = region[j] ? Zs[j] : (known[j] ? Z[j] : (dObs[j] <= near ? 0 : NaN));
   const step = Math.max(1, Math.ceil(nPts / 25000));
   const P = new Float32Array(Math.ceil(nPts / step) * 3); let pc = 0;
   for (let q = 0; q < nPts; q += step) {
@@ -1084,12 +1448,16 @@ function finish(opts) {
     const x = camPath[q * 5], y = camPath[q * 5 + 1], z = camPath[q * 5 + 2];
     path[qc++] = x; path[qc++] = y - base(x, z); path[qc++] = z;
   }
+  let walked = 0;
+  for (let q = 1; q < nP; q++) walked += Math.hypot(camPath[q * 5] - camPath[(q - 1) * 5], camPath[q * 5 + 2] - camPath[(q - 1) * 5 + 2]);
   const result = {
-    type: 'result', volume: V, sigma, filledVolume: Vfill, footprint: area, maxHeight: maxH,
-    length: len, width: wid, coverage, progress, loopMismatch: loopMis, ground: { a: pl.a, b: pl.b, c: pl.c, rms: pl.rms, n: pl.nIn },
+    type: 'result', volume: V, sigma, filledVolume: Vfill, mirroredVolume: Vmir, footprint: area, maxHeight: maxH,
+    length: len, width: wid, coverage, mirrorShare, progress, walked, loopMismatch: loopMis,
+    ground: { a: pl.a, b: pl.b, c: pl.c, rms: pl.rms, n: pl.nIn },
     ringMean, ringRms, camHeight: camH, nPoints: nPts, nDepthFrames, nDepthSamples, duration: nP ? camPath[(nP - 1) * 5 + 3] - camPath[3] : 0,
-    flipMode, flipLocked, flipStats, warnings, zt,
-    parts: { scale: eScale, fill: eFill, base: eBase, loop: eLoop },
+    flipMode, flipLocked, flipStats, warnings, notes, zt, domeRise, topHeight: topH, topSource, topMeasured: topKnown, topReach, slopeDeg: Math.atan(tanA) / DEG, tapHeights: taps.map(t => t.H), nTaps: topRays.length, walk: partial ? 'partial' : 'full', top: flatTop ? 'flat' : 'peaked', incomplete: partial && !sym,
+    sym: sym ? { method: sym.method, angleDeg: sym.th * 180 / Math.PI, u0: sym.u0, v0: sym.v0, umin: sym.umin, umax: sym.umax, nA: sym.nA, nB: sym.nB } : null, cellSize: s,
+    parts: { scale: eScale, fill: eFill, mirror: eMirror, base: eBase, loop: eLoop },
     grid: { nx, nz, s, x0: X0, z0: Z0, Z: Zout, mask }, center: [mx, mz], points: P, path
   };
   return { msg: result, transfer: [Zout.buffer, mask.buffer, P.buffer, path.buffer] };
@@ -1099,7 +1467,7 @@ function state() {
   return { started, flipMode, flipLocked, nPts, nTracks: tracks.length, nDepthFrames, frames: fr.R.length };
 }
 
-return { CFG, reset, processFrame, start, finish, state, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
+return { CFG, reset, processFrame, start, finish, state, topEdge, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
 })();
 
 if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof importScripts === 'function') {
@@ -1109,6 +1477,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof impor
       if (m.type === 'reset') { PSE.reset(m.cfg); self.postMessage({ type: 'ready' }); }
       else if (m.type === 'frame') { const o = PSE.processFrame(m); self.postMessage(o.msg, o.transfer); }
       else if (m.type === 'start') { PSE.start(m.center, m.t); }
+      else if (m.type === 'top') { PSE.topEdge(m.C, m.D); }
       else if (m.type === 'finish') { const o = PSE.finish(m.opts); self.postMessage(o.msg, o.transfer); }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err && err.stack || err) });

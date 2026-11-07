@@ -28,7 +28,7 @@
     <section id="scr-home" class="screen active">
       <div class="hero">
         <h1>Walk around a pile.<br><span>Get m³ and tonnes.</span></h1>
-        <p class="lede">Your phone tracks the pile in 3D while you walk one loop around it. Everything is calculated on the phone.</p>
+        <p class="lede">Your phone tracks the pile in 3D while you walk around it — or along the sides you can reach. Everything is calculated on the phone.</p>
       </div>
       <div class="card">
         <label class="field"><span>Pile name</span><input id="in-name" type="text" maxlength="60" autocomplete="off"></label>
@@ -36,12 +36,31 @@
           <label class="field grow"><span>Material</span><select id="in-mat"></select></label>
           <label class="field den"><span>Density t/m³</span><input id="in-den" type="number" inputmode="decimal" step="0.01" min="0.05" max="5"></label>
         </div>
-        <button id="btn-ar" class="btn primary big">Start AR measurement</button>
-        <div id="ar-status" class="status">Checking AR support…</div>
       </div>
+      <div class="card setup">
+        <h3>Pile setup</h3>
+        <div class="opt">
+          <div class="opt-h">How can you walk?</div>
+          <div class="segs" id="opt-walk"><button class="seg" data-v="full">All the way round</button><button class="seg" data-v="partial">Only 1–2 sides</button></div>
+          <p class="opt-help" id="help-walk"></p>
+          <label class="field hidden" id="row-width"><span>Base width (m) — needed only if you can walk one long side and no end</span><input id="in-width" type="number" inputmode="decimal" step="0.1" min="1" placeholder="optional"></label>
+        </div>
+        <div class="opt">
+          <div class="opt-h">Top you can't see</div>
+          <div class="segs" id="opt-top"><button class="seg" data-v="peaked">Rounded / peaked</button><button class="seg" data-v="flat">Flat</button></div>
+          <p class="opt-help" id="help-top"></p>
+          <label class="field" id="row-height"><span>Pile height (m) — optional, if you know it</span><input id="in-height" type="number" inputmode="decimal" step="0.1" min="0.5" placeholder="optional"></label>
+        </div>
+        <div class="opt">
+          <div class="opt-h">Pile length</div>
+          <div class="segs" id="opt-size"><button class="seg" data-v="small">Up to 25 m</button><button class="seg" data-v="medium">25–80 m</button><button class="seg" data-v="large">80–300 m</button></div>
+        </div>
+      </div>
+      <button id="btn-ar" class="btn primary big">Start AR measurement</button>
+      <div id="ar-status" class="status">Checking AR support…</div>
       <div class="grid2">
         <button id="btn-demo" class="tile">
-          <b>Try the demo</b><span>Simulated gravel pile with a known volume — see the whole flow on any device.</span>
+          <b>Try the demo</b><span>A simulated pile with a known volume, measured with the setup chosen above — runs on any device.</span>
         </button>
         <button class="tile" data-go="guide">
           <b>How to measure</b><span>Walking route, distances, the tape check and what affects accuracy.</span>
@@ -67,6 +86,7 @@
           <button class="seg on" id="v-3d">3D</button><button class="seg" id="v-top">Top</button><button class="seg" id="v-pts">Points</button>
           <span class="muted small">drag · pinch · double-tap</span>
         </div>
+        <div id="res-legend" class="legend"></div>
       </div>
       <div id="res-stats" class="stats"></div>
       <ul id="res-warn" class="warns"></ul>
@@ -119,6 +139,16 @@
         <li><b>Tape check.</b> During the walk, aim the centre dot at marker A and tap <i>Mark A</i>, then at marker B and tap <i>Mark B</i>. On the result page enter your taped distance.</li>
       </ol>
       <div class="card">
+        <h3>Piles you can't walk round, tall piles, big piles</h3>
+        <ul class="plain">
+          <li><b>Only 1–2 sides reachable</b> (a pile against a shed wall or in a corner): choose <i>Only 1–2 sides</i>. Walk the full length of one long side and, if you can, one end. The sides you could not reach are filled in as a mirror image of the ones you measured, so this assumes the pile is symmetrical. Walking one end as well lets Photoscale find the pile's centre line from both of its toes. If you can only walk one long side, enter the pile's base width instead (from the stacker's settings or a tape) — otherwise the hidden half cannot be placed and only the measured half is counted.</li>
+          <li><b>If the pile touches the wall</b> rather than standing clear of it, the mirror image is not right — the part against the wall would be missed. Measure such piles with care and compare with known tonnages.</li>
+          <li><b>Tall piles with a flat top</b> you cannot see from the ground: choose <i>Flat</i>. The hidden top is taken as flat. With <i>Rounded / peaked</i>, the slopes are continued into a rounded peak instead, which suits cones and ridges but would overestimate a flat-topped pile.</li>
+          <li><b>Piles taller than about 5 m.</b> The phone measures the surface only up to roughly 8–10 m away, so on a tall pile it may not reach the top edge. Stop two or three times along the pile, aim the centre dot at the pile's top edge against the sky (or the ridge, for a peaked pile) and tap <b>Top edge</b>. Photoscale continues the measured slope upwards until it meets that sight line, which gives the height. Tap from a side you are walking along, with the lower slope in view. If you know the height (from the stacker or a laser meter), you can enter it instead under <i>Pile height</i>.</li>
+          <li><b>Long stockyard piles</b> (say 200 × 50 m): choose <i>80–300 m</i>. Walking all the way round takes long and lets tracking drift; walking one long side plus one end with <i>Only 1–2 sides</i> halves the walk. Use a long tape check (markers 30–50 m apart) on big piles.</li>
+        </ul>
+      </div>
+      <div class="card">
         <h3>Tonnage and density</h3>
         <p class="muted">Tonnage = volume × bulk density. The built-in densities are typical values only. Coal, ash and aggregates change with moisture and compaction, so calibrate once: measure a pile whose weight you know from the weighbridge, then use <i>Calibrate density</i> on the result page and save it as your own material.</p>
       </div>
@@ -167,6 +197,7 @@
   <div class="ov-bottom">
     <div class="ov-ringwrap"><canvas id="ov-ring" width="240" height="240"></canvas><div id="ov-pct" class="ov-pct">0%</div></div>
     <div class="ov-btns">
+      <button id="ov-topedge" class="ov-small hidden">Top edge</button>
       <button id="ov-ref" class="ov-small hidden">Mark A</button>
       <button id="ov-main" class="ov-main" disabled>START</button>
     </div>

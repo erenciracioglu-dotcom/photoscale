@@ -43,9 +43,13 @@ class PileViewer {
       const hl = zAt(Math.max(0, i - 1), k), hr = zAt(Math.min(nx - 1, i + 1), k), hd = zAt(i, Math.max(0, k - 1)), hu = zAt(i, Math.min(nz - 1, k + 1));
       let a = (hl - hr) / (2 * s), b = 1, cc = (hd - hu) / (2 * s); const l = Math.hypot(a, b, cc);
       nrm[j * 3] = a / l; nrm[j * 3 + 1] = b / l; nrm[j * 3 + 2] = cc / l;
-      const inPile = M[j] & 1, seen = M[j] & 2;
+      const inPile = M[j] & 1, seen = M[j] & 2, mirrored = M[j] & 4;
       let rgb;
-      if (inPile) { rgb = PileViewer.cmap(Math.max(0, z) / maxH); if (!seen) rgb = [rgb[0] * 0.6 + 0.3, rgb[1] * 0.6 + 0.3, rgb[2] * 0.6 + 0.3]; }
+      if (inPile) {
+        rgb = PileViewer.cmap(Math.max(0, z) / maxH);
+        if (mirrored) rgb = [rgb[0] * 0.6 + 0.3, rgb[1] * 0.6 + 0.34, rgb[2] * 0.6 + 0.4];
+        else if (!seen) { const gr = (rgb[0] + rgb[1] + rgb[2]) / 3; rgb = [gr * 0.35 + 0.36, gr * 0.35 + 0.37, gr * 0.35 + 0.39]; }
+      }
       else rgb = seen ? [0.36, 0.38, 0.40] : [0.20, 0.21, 0.23];
       col[j * 4] = rgb[0]; col[j * 4 + 1] = rgb[1]; col[j * 4 + 2] = rgb[2]; col[j * 4 + 3] = inPile ? 1 : 0;
     }

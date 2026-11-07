@@ -16,6 +16,9 @@ async def main():
         await pg.goto(base + '/test/simtest.html')
         res = await pg.evaluate('o => runTest(o)', opts)
         print('RESULT', json.dumps(opts), json.dumps(res), flush=True)
+        if opts.get('dump'):
+            g = await pg.evaluate('() => window.__grid')
+            open(opts['dump'], 'w').write(json.dumps(g))
         await b.close()
 
 asyncio.run(main())

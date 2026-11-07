@@ -1,5 +1,11 @@
 /* ---------- capture controller (shared by AR mode and the simulated demo) ---------- */
 const TAU = Math.PI * 2;
+/* grid resolution per pile size: cell size (m) x cells per side = covered area */
+const PILE_SIZES = {
+  small: { cellSize: 0.10, gridN: 640, label: 'up to 25 m' },   // 64 m square
+  medium: { cellSize: 0.25, gridN: 800, label: '25–80 m' },     // 200 m square
+  large: { cellSize: 0.50, gridN: 1000, label: '80–300 m' }     // 500 m square
+};
 const $ = (id) => document.getElementById(id);
 
 const Overlay = {
@@ -8,6 +14,7 @@ const Overlay = {
     $('ov').classList.toggle('sim', !!isSim);
     this.setMain('START', false);
     $('ov-ref').textContent = 'Mark A'; $('ov-ref').classList.add('hidden');
+    $('ov-topedge').textContent = 'Top edge'; $('ov-topedge').classList.add('hidden');
     this.setMsg('Starting…', 'info', 0);
   },
   hide() { $('ov').classList.add('hidden'); },
@@ -43,6 +50,13 @@ const Overlay = {
     g.beginPath(); g.arc(cx + r * Math.cos(a), cy + r * Math.sin(a), W * 0.06, 0, TAU); g.fill();
     g.strokeStyle = '#111'; g.lineWidth = W * 0.015; g.stroke();
     $('ov-pct').textContent = Math.min(100, Math.round(progress * 100)) + '%';
+  },
+  ringText(text) {
+    const c = $('ov-ring'), g = c.getContext('2d'), W = c.width;
+    g.clearRect(0, 0, W, W);
+    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = W * 0.05;
+    g.beginPath(); g.arc(W / 2, W / 2, W * 0.40, 0, TAU); g.stroke();
+    $('ov-pct').textContent = text;
   },
   mini(m, path, cam, fwd, start) {
     const c = $('ov-mini'), g = c.getContext('2d'), W = c.width;
@@ -89,11 +103,13 @@ class Capture {
       center: null, cum: 0, lastAng: null, progress: 0, dir: 0, sectors: new Uint16Array(36), startAng: 0,
       speed: 0, angSpeed: 0, lastC: null, lastT: null, lastF: null, closedNotified: false, stats: null, mini: null,
       path: [], lastPathT: -1, refA: null, refB: null, startC: null, groundYs: [], lowSince: null, trackingLost: false,
-      lastGuide: -1, idleWaiters: [], resultWaiter: null, lastR: null, nearDist: null, finished: false, frames: 0
+      lastGuide: -1, idleWaiters: [], resultWaiter: null, lastR: null, nearDist: null, finished: false, frames: 0,
+      partial: !!(meta && meta.walk === 'partial'), walked: 0, nTop: 0
     });
     this.recorder = this.opts.record ? new Recorder() : null;
     Overlay.show(source.isSim);
     $('ov-ref').onclick = () => this.markRef();
+    $('ov-topedge').onclick = () => this.markTop();
     $('ov-main').onclick = () => { if (this.phase === 'warmup') this.startWalk(); else if (this.phase === 'walk') this.finish(); };
     $('ov-close').onclick = () => this.abort();
   }
@@ -111,6 +127,7 @@ class Capture {
         const dA = Math.acos(Math.max(-1, Math.min(1, F[0] * this.lastF[0] + F[1] * this.lastF[1] + F[2] * this.lastF[2]))) / dt * 180 / Math.PI;
         const k = Math.min(1, dt / 0.6);
         this.speed += (v - this.speed) * k; this.angSpeed += (dA - this.angSpeed) * k;
+        if (this.phase === 'walk') { const st = Math.hypot(C[0] - this.lastC[0], C[2] - this.lastC[2]); if (st < 2) this.walked += st; }
       }
       this.lastC = C; this.lastT = t; this.lastF = F; this.lastR = info.R;
       if (this.phase === 'walk') {
@@ -190,6 +207,7 @@ class Capture {
     this.cum = 0; this.lastAng = null; this.progress = 0;
     Overlay.setMain('FINISH', true);
     $('ov-ref').classList.remove('hidden');
+    $('ov-topedge').classList.remove('hidden');
     if (navigator.vibrate) navigator.vibrate(40);
   }
   markRef() {
@@ -197,6 +215,18 @@ class Capture {
     if (!h || !h.p) { Overlay.setMsg('Aim the centre dot at the marker on the ground and try again', 'warn', 0); return; }
     if (!this.refA || this.refB) { this.refA = h.p.slice(); this.refB = null; $('ov-ref').textContent = 'Mark B'; }
     else { this.refB = h.p.slice(); $('ov-ref').textContent = 'A–B ' + Math.hypot(this.refA[0] - this.refB[0], this.refA[1] - this.refB[1], this.refA[2] - this.refB[2]).toFixed(2) + ' m'; }
+    if (navigator.vibrate) navigator.vibrate(25);
+  }
+  /* "Top edge": the sight line through the centre dot, aimed at the pile's skyline */
+  markTop(C, D) {
+    if (this.phase !== 'walk') return;
+    if (!C || !D) { const r = this.source.centerRay && this.source.centerRay(); if (r) { C = r.C; D = r.D; } else { C = this.lastC; D = this.lastF; } }
+    if (!C || !D) return;
+    this.worker.postMessage({ type: 'top', C, D });
+    if (this.recorder) this.recorder.event('top', { C, D, t: this.lastT });
+    this.nTop++;
+    $('ov-topedge').textContent = 'Top edge ✓ ' + this.nTop;
+    if (!this.source.isTest) { Overlay.setMsg('Top edge marked (' + this.nTop + '). Mark it again from one or two other places along the pile', 'ok', 0); this.lastGuide = this.lastT + 2.5; }
     if (navigator.vibrate) navigator.vibrate(25);
   }
   guide(t) {
@@ -214,7 +244,12 @@ class Capture {
       else if (this.angSpeed > 75) { msg = 'Turn the phone more slowly'; kind = 'warn'; }
       else if (this.lowSince !== null && t - this.lowSince > 1.2) { msg = 'Not enough detail — keep the pile in view'; kind = 'warn'; }
       else if (this.nearDist !== null && this.nearDist < 1.3) { msg = 'Step back — keep the whole pile and some ground in view'; kind = 'warn'; }
-      else if (p >= 1.04) {
+      else if (this.meta && this.meta.top === 'flat' && !this.meta.topHeight && this.nTop < 2 && t - this.startT > 6 && (t % 12) < 4) {
+        msg = 'Aim the centre dot at the top edge of the pile and tap Top edge (' + this.nTop + ' of 2–3)'; kind = 'go';
+      } else if (this.partial) {
+        if (t - this.startT < 6) msg = 'Walk slowly along the sides you can reach — a long side and, if possible, one end';
+        else msg = 'Keep the whole height and some ground in view. Tap FINISH when you have walked the sides you can reach';
+      } else if (p >= 1.04) {
         msg = 'Loop closed ✓  Tap FINISH'; kind = 'ok';
         if (!this.closedNotified) { this.closedNotified = true; if (navigator.vibrate) navigator.vibrate([60, 60, 60]); Overlay.setMain('FINISH', true, 'go'); }
       } else if (p >= 0.86) {
@@ -228,7 +263,8 @@ class Capture {
       else msg = 'Keep walking around the pile';
     }
     Overlay.setMsg(msg, kind, arrow);
-    if (this.phase === 'walk' || this.phase === 'warmup') Overlay.ring(this.sectors, this.progress, this.dir, this.progress >= 1.04);
+    if (this.partial && this.phase === 'walk') Overlay.ringText(Math.round(this.walked) + ' m');
+    else if (this.phase === 'walk' || this.phase === 'warmup') Overlay.ring(this.sectors, this.progress, this.dir, this.progress >= 1.04);
     if (st) Overlay.setStats(`tracked ${st.nTracks} · locked ${st.nGreen} · 3D pts ${st.nPts} · depth frames ${st.nDepthFrames} · ${st.ms.toFixed(0)} ms/frame · image ${this.flipLocked ? 'ok' : 'checking'}(${this.flip})` +
       ` · ${this.speed.toFixed(2)} m/s` + (this.source.featInfo ? ' · ' + this.source.featInfo : ''));
   }
@@ -244,10 +280,12 @@ class Capture {
   }
   finish() {
     if (this.phase !== 'walk') return;
-    if (this.progress < 0.9 && !this.source.isTest && !this.armed('finish', 'FINISH NOW?', 'Only ' + Math.round(this.progress * 100) + '% of the way round — tap FINISH NOW? again to finish anyway')) return;
+    const early = this.partial ? this.walked < 5 : this.progress < 0.9;
+    if (early && !this.source.isTest && !this.armed('finish', 'FINISH NOW?', this.partial ? 'You have only walked ' + Math.round(this.walked) + ' m — tap FINISH NOW? again to finish anyway' : 'Only ' + Math.round(this.progress * 100) + '% of the way round — tap FINISH NOW? again to finish anyway')) return;
     this.phase = 'finishing';
     Busy.show('Calculating volume…');
-    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress } });
+    const m = this.meta || {};
+    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress, walk: m.walk || 'full', top: m.top || 'peaked', baseWidth: m.baseWidth || 0, topHeight: m.topHeight || 0 } });
     if (this.busy) this.waitIdle().then(send); else send();
     if (this.source.stop) this.source.stop();
   }
@@ -327,6 +365,7 @@ const SimRunner = {
     sim.centerHit = () => sim._tp ? sim.hitAt(sim._tp, 0.5, 0.5) : null;
     const fps = 15; let f = 0, lastHit = -1;
     const t0 = performance.now();
+    const tapAt = [0.15, 0.35, 0.8, 0.5, 0.65].slice(0, sim.o.topTaps || 0).sort((a, b) => a - b);
     for (;;) {
       const t = f / fps; f++;
       const tp = sim.truePose(t); sim._tp = tp;
@@ -334,6 +373,7 @@ const SimRunner = {
       capture.frame({ t, R: rp.R, C: rp.C, tracking: true });
       capture.busy = false;
       if (capture.phase === 'warmup' && t >= 2.0) capture.startWalk();
+      if (capture.phase === 'walk' && tapAt.length && tp.prog >= tapAt[0]) { tapAt.shift(); const r = sim.topEdgeRay(tp); if (r) capture.markTop(rp.C, r); }
       const gray = sim.o.camera ? sim.grabGray(tp) : null;
       const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
       let hits = null;

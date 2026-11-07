@@ -1,5 +1,5 @@
 /* ---------- app: screens, materials, results, history ---------- */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const PRESETS = [
   { name: 'Gravel (loose)', d: 1.60 }, { name: 'Sand (dry)', d: 1.60 }, { name: 'Crushed stone', d: 1.55 },
   { name: 'Limestone (crushed)', d: 1.55 }, { name: 'Soil / earth (loose)', d: 1.30 },
@@ -53,6 +53,7 @@ const App = {
     $('in-name').value = this.defaultName();
     if (last) { this.selectMaterial(last.material, last.density); }
     $('in-mat').onchange = () => { const o = $('in-mat').selectedOptions[0]; if (o && o.dataset.d) $('in-den').value = o.dataset.d; };
+    this.initSetup();
     $('btn-ar').onclick = () => this.startAR();
     $('btn-demo').onclick = () => this.startDemo();
     // result screen
@@ -133,10 +134,39 @@ const App = {
       r.appendChild(b); box.appendChild(r);
     });
   },
+  /* pile setup: walk (full/partial), top (peaked/flat), size (grid), base width */
+  initSetup() {
+    this.setup = Object.assign({ walk: 'full', top: 'peaked', size: 'small' }, Store.get('setup', {}));
+    delete this.setup.width; // base width and height belong to one pile: kept for this session only
+    const bind = (id, key) => {
+      $(id).querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => { this.setup[key] = b.dataset.v; this.renderSetup(); }));
+    };
+    bind('opt-walk', 'walk'); bind('opt-top', 'top'); bind('opt-size', 'size');
+    this.renderSetup();
+  },
+  renderSetup() {
+    const S = this.setup;
+    for (const [id, key] of [['opt-walk', 'walk'], ['opt-top', 'top'], ['opt-size', 'size']])
+      $(id).querySelectorAll('.seg').forEach(b => b.classList.toggle('on', b.dataset.v === S[key]));
+    $('help-walk').textContent = S.walk === 'partial'
+      ? 'Walk the full length of one long side and one end if you can. The sides you can\'t reach are mirrored from the measured ones, so the pile is assumed symmetrical.'
+      : 'Walk one full loop around the pile, a few steps past where you started.';
+    $('help-top').textContent = (S.top === 'flat'
+      ? 'Where the top can\'t be seen (tall piles), it is taken as flat at the height of its edge.'
+      : 'Where the top can\'t be seen, the slopes are continued into a rounded peak (cones, ridges).') +
+      ' Piles over about 5 m high: tap Top edge during the walk, or enter the height below.';
+    $('row-width').classList.toggle('hidden', S.walk !== 'partial');
+    Store.set('setup', S);
+  },
+  setupText(m) {
+    return (m.walk === 'partial' ? 'partial walk (mirrored)' : 'full loop') + ' · ' + (m.top === 'flat' ? 'flat top' : 'rounded top');
+  },
   readForm() {
     const sel = $('in-mat'), d = parseFloat($('in-den').value);
     const material = sel.value === '__other' ? 'Custom' : sel.value;
-    const meta = { name: ($('in-name').value || this.defaultName()).trim(), material, density: d > 0 ? d : 1 };
+    const S = this.setup || { walk: 'full', top: 'peaked', size: 'small' }, w = parseFloat($('in-width').value), ht = parseFloat($('in-height').value);
+    const meta = { name: ($('in-name').value || this.defaultName()).trim(), material, density: d > 0 ? d : 1,
+      walk: S.walk, top: S.top, size: S.size, baseWidth: S.walk === 'partial' && w > 0 ? w : 0, topHeight: ht > 0 ? ht : 0 };
     Store.set('last', { material: sel.value, density: meta.density });
     return meta;
   },
@@ -160,7 +190,8 @@ const App = {
     const meta = this.readForm();
     const src = new XRSource();
     const cap = new Capture(this.hooks());
-    cap.begin(src, meta, { record: Store.get('record', false) });
+    const sz = PILE_SIZES[meta.size] || PILE_SIZES.small;
+    cap.begin(src, meta, { record: Store.get('record', false), cfg: { cellSize: sz.cellSize, gridN: sz.gridN } });
     $('ov-stats').classList.toggle('hidden', !Store.get('debug', false));
     try { await src.start(cap); }
     catch (e) {
@@ -171,11 +202,18 @@ const App = {
   },
   startDemo() {
     const meta = this.readForm();
-    meta.name = 'Demo pile (simulated)';
-    const sim = new SimSource({ kind: 'demo', speed: Store.get('speed', 2) });
+    // the demo follows the chosen setup: round heap, long flat-topped pile, or a pile walked on two sides
+    let sc = { kind: 'demo', path: 'circle', name: 'Demo heap (simulated)' };
+    if (meta.walk === 'partial') sc = meta.top === 'flat' ? { kind: 'yard', path: 'L', name: 'Demo: flat-topped pile, 2 sides walked' } : { kind: 'yardpk', path: 'L', name: 'Demo: ridge pile, 2 sides walked' };
+    else if (meta.top === 'flat') sc = { kind: 'yard', path: 'rect', name: 'Demo: flat-topped pile, full loop' };
+    meta.name = sc.name;
+    if (sc.kind !== 'demo' && meta.size === 'small') meta.size = 'medium';
+    meta.baseWidth = 0; meta.topHeight = 0;
+    const sim = new SimSource({ kind: sc.kind, path: sc.path, speed: Store.get('speed', 2) });
     try { sim.init($('sim-canvas')); } catch (e) { this.toast(e.message, 'bad'); return; }
     const cap = new Capture(this.hooks());
-    cap.begin(sim, meta, { record: false });
+    const szd = PILE_SIZES[meta.size] || PILE_SIZES.small;
+    cap.begin(sim, meta, { record: false, cfg: { cellSize: szd.cellSize, gridN: szd.gridN } });
     $('ov-stats').classList.toggle('hidden', !Store.get('debug', false));
     SimRunner.interactive(cap, sim);
   },
@@ -183,7 +221,7 @@ const App = {
   onResult(r, extra) {
     if (r.error) { this.toast(r.error, 'bad', 9000); this.show('home'); return; }
     const m = extra.meta;
-    this.cur = { id: 'm' + Date.now(), r, extra, name: m.name, material: m.material, density: m.density, date: new Date().toISOString(), scale: 1, tapeAR: null, tape: null, saved: false };
+    this.cur = { id: 'm' + Date.now(), r, extra, name: m.name, material: m.material, density: m.density, date: new Date().toISOString(), scale: 1, tapeAR: null, tape: null, saved: false, walk: r.walk, top: r.top };
     if (extra.refA && extra.refB) this.cur.tapeAR = Math.hypot(extra.refA[0] - extra.refB[0], extra.refA[1] - extra.refB[1], extra.refA[2] - extra.refB[2]);
     this.openResult();
   },
@@ -203,15 +241,15 @@ const App = {
   numbers() {
     const c = this.cur, r = c.r, f = c.scale, f3 = f * f * f, V = r.volume * f3;
     const p = r.parts, scalePart = c.tape ? 3 * 0.003 * V : p.scale * f3;
-    const parts = { scale: scalePart, fill: p.fill * f3, base: p.base * f3, loop: p.loop * f3 };
-    const sig = Math.sqrt(parts.scale ** 2 + parts.fill ** 2 + parts.base ** 2 + parts.loop ** 2);
+    const parts = { scale: scalePart, fill: p.fill * f3, mirror: (p.mirror || 0) * f3, base: p.base * f3, loop: p.loop * f3 };
+    const sig = Math.sqrt(parts.scale ** 2 + parts.fill ** 2 + parts.mirror ** 2 + parts.base ** 2 + parts.loop ** 2);
     const lo = Math.max(0, V - 1.5 * sig), hi = V + 1.5 * sig;
     return { V, lo, hi, pm: V > 0 ? 1.5 * sig / V * 100 : 0, parts, f, T: V * c.density, Tlo: lo * c.density, Thi: hi * c.density };
   },
   renderResult() {
     const c = this.cur, r = c.r, N = this.numbers(), f = N.f;
     $('res-title').textContent = c.name;
-    $('res-sub').textContent = fmt.date(c.date) + ' · ' + c.material + (c.extra && c.extra.source === 'demo' ? ' · demo' : '');
+    $('res-sub').textContent = fmt.date(c.date) + ' · ' + c.material + ' · ' + this.setupText({ walk: r.walk, top: r.top }) + (c.extra && c.extra.source === 'demo' ? ' · demo' : '');
     $('res-vol').textContent = fmt.big(N.V);
     $('res-vol-range').textContent = 'likely ' + fmt.big(N.lo) + '–' + fmt.big(N.hi) + ' m³ (±' + N.pm.toFixed(0) + '%)';
     $('res-ton').textContent = fmt.big(N.T);
@@ -219,7 +257,11 @@ const App = {
     const q = $('res-quality');
     // grade the capture itself (loop, coverage, ground, drift); the ± range is shown separately
     const nw = r.warnings.length;
-    const grade = nw === 0 && r.coverage >= 0.85 ? ['good', 'Good capture'] : (nw <= 1 && r.coverage >= 0.7 ? ['fair', 'Fair — see notes'] : ['poor', 'Check the notes']);
+    // coverage only counts against a full loop with a rounded top; partial walks and flat tops expect unseen parts
+    const covOk = (r.walk === 'partial' || r.top === 'flat') ? true : r.coverage >= 0.85;
+    const grade = r.incomplete ? ['poor', 'Incomplete — see notes'] : (nw === 0 && covOk ? ['good', 'Good capture'] : (nw <= 1 ? ['fair', 'Fair — see notes'] : ['poor', 'Check the notes']));
+    const lg = $('res-legend');
+    if (lg) lg.innerHTML = '<span><i class="lg seen"></i>measured</span>' + ((r.mirroredVolume || 0) > 0 ? '<span><i class="lg mir"></i>mirrored</span>' : '') + (r.filledVolume > 0.005 * r.volume ? '<span><i class="lg fill"></i>filled (' + (r.top === 'flat' ? 'flat' : 'rounded') + ' top)</span>' : '') + '<span><i class="lg path"></i>your path</span>';
     q.className = 'qbadge ' + grade[0]; q.textContent = grade[1];
     const tr = $('res-truth');
     if (c.extra && c.extra.truth) {
@@ -230,11 +272,13 @@ const App = {
     const stats = [
       [fmt.n(r.footprint * f * f, 1) + ' m²', 'footprint'], [fmt.n(r.maxHeight * f, 2) + ' m', 'peak height'],
       [fmt.n(r.length * f, 1) + ' × ' + fmt.n(r.width * f, 1) + ' m', 'length × width'],
-      [Math.round(r.coverage * 100) + '%', 'surface seen'], [r.progress >= 0.98 ? 'Yes ✓' : Math.round(r.progress * 100) + '%', 'loop closed'],
+      [Math.round(r.coverage * 100) + '%', 'surface seen' + (r.mirrorShare ? ' (+' + Math.round(r.mirrorShare * 100) + '% mirrored)' : '')],
+      r.walk === 'partial' ? [Math.round(r.walked || 0) + ' m', 'walked'] : [r.progress >= 0.98 ? 'Yes ✓' : Math.round(r.progress * 100) + '%', 'loop closed'],
       [fmt.dur(r.duration), 'walk time']
     ];
     $('res-stats').innerHTML = stats.map(s => `<div class="stat"><b>${s[0]}</b><span>${s[1]}</span></div>`).join('');
     const W = $('res-warn'); W.innerHTML = '';
+    for (const w of (r.notes || [])) { const li = document.createElement('li'); li.className = 'note'; li.textContent = w; W.appendChild(li); }
     for (const w of r.warnings) { const li = document.createElement('li'); li.textContent = w; W.appendChild(li); }
     if (!r.warnings.length) { const li = document.createElement('li'); li.className = 'ok'; li.textContent = 'No problems detected: the loop was closed, the surface was well covered and the ground level is consistent.'; W.appendChild(li); }
     if (!c.tape && c.tapeAR === null && N.pm > 4) {
@@ -244,7 +288,9 @@ const App = {
     $('why-body').innerHTML =
       `<p class="muted">The range shown is where the true volume most likely lies. It adds up these sources of error (each shown at the same confidence):</p>` +
       row('Phone scale', c.tape ? 'Corrected with your tape check.' : 'The phone\'s sense of distance can be off by 1–2%; volume triples that. A tape check removes most of it.', P.scale) +
-      row('Unseen areas', Math.round((1 - r.coverage) * 100) + '% of the surface was filled in by estimation (' + fmt.big(r.filledVolume * f * f * f) + ' m³ of the volume).', P.fill) +
+      (P.mirror > 0 ? row('Mirrored sides', 'The sides you could not reach were taken as a mirror image of the measured ones (' + fmt.big((r.mirroredVolume || 0) * f * f * f) + ' m³). Real piles are never perfectly symmetrical.', P.mirror) : '') +
+      row('Unseen areas', 'Parts nobody saw were filled in as a ' + (r.top === 'flat' ? 'flat' : 'rounded') + ' top (' + fmt.big(r.filledVolume * f * f * f) + ' m³ of the volume)' +
+        (r.topSource === 'taps' ? ', up to ' + (r.topHeight * f).toFixed(1) + ' m from your top-edge taps' : (r.topSource === 'entered' ? ', up to the ' + (r.topHeight * f).toFixed(1) + ' m height you entered' : '')) + '.', P.fill) +
       row('Ground level', 'How well the ground around the pile defines the base under it (spread ' + (r.ringRms * 100).toFixed(1) + ' cm).', P.base) +
       row('Tracking drift', r.loopMismatch !== null ? 'Where your loop closed, start and end differed by ' + (r.loopMismatch * 100).toFixed(1) + ' cm.' : 'Could not be checked at the loop end.', P.loop) +
       `<p class="muted small">Tonnage also depends on the density you chose (${c.density.toFixed(2)} t/m³). A 5% error in density is a 5% error in tonnes — calibrate it with a weighed pile when you can.</p>`;
@@ -293,7 +339,7 @@ const App = {
     return {
       id: c.id, name: c.name, material: c.material, density: c.density, date: c.date, volume: N.V, lo: N.lo, hi: N.hi, tonnes: N.T,
       footprint: c.r.footprint * N.f * N.f, peak: c.r.maxHeight * N.f, coverage: c.r.coverage, source: c.extra && c.extra.source,
-      tape: c.tape, scale: c.scale, warnings: c.r.warnings.length
+      tape: c.tape, scale: c.scale, warnings: c.r.warnings.length, walk: c.r.walk, top: c.r.top
     };
   },
   async save() {
@@ -342,9 +388,11 @@ const App = {
       volume_m3: +N.V.toFixed(3), volume_likely_range_m3: [+N.lo.toFixed(3), +N.hi.toFixed(3)], tonnes: +N.T.toFixed(3),
       footprint_m2: +(r.footprint * N.f * N.f).toFixed(3), peak_height_m: +(r.maxHeight * N.f).toFixed(3),
       length_m: +(r.length * N.f).toFixed(2), width_m: +(r.width * N.f).toFixed(2), surface_seen: +r.coverage.toFixed(3),
-      loop_progress: +r.progress.toFixed(3), tape_check: c.tape ? { ar_distance_m: c.tapeAR, tape_distance_m: c.tape, scale_factor: c.scale } : null,
-      error_parts_m3: N.parts, warnings: r.warnings,
-      height_grid: { note: 'heights above the base plane in metres, row-major (z rows, x columns); NaN = not measured; mask bit0 = pile, bit1 = seen (a measurement within 25 cm)', nx: r.grid.nx, nz: r.grid.nz, cell_m: r.grid.s, scale_applied: c.scale, Z_float32_base64: b64(r.grid.Z), mask_uint8_base64: b64(r.grid.mask) }
+      loop_progress: +r.progress.toFixed(3), walk: r.walk, top_assumption: r.top, mirrored_volume_m3: +((r.mirroredVolume || 0) * N.f ** 3).toFixed(3),
+      filled_volume_m3: +(r.filledVolume * N.f ** 3).toFixed(3), symmetry: r.sym,
+      top: { height_m: r.topHeight != null ? +(r.topHeight * N.f).toFixed(2) : null, from: r.topSource || 'measured', highest_measured_m: r.topMeasured != null ? +(r.topMeasured * N.f).toFixed(2) : null, top_edge_taps_m: (r.tapHeights || []).map(h => +(h * N.f).toFixed(2)), slope_deg: r.slopeDeg != null ? +r.slopeDeg.toFixed(1) : null }, tape_check: c.tape ? { ar_distance_m: c.tapeAR, tape_distance_m: c.tape, scale_factor: c.scale } : null,
+      error_parts_m3: N.parts, warnings: r.warnings, notes: r.notes || [],
+      height_grid: { note: 'heights above the base plane in metres, row-major (z rows, x columns); NaN = not measured; mask bit0 = pile, bit1 = seen (a measurement within 25 cm), bit2 = mirrored from the measured side', nx: r.grid.nx, nz: r.grid.nz, cell_m: r.grid.s, scale_applied: c.scale, Z_float32_base64: b64(r.grid.Z), mask_uint8_base64: b64(r.grid.mask) }
     };
     this.download(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }), this.fileBase() + '.json');
   },
@@ -360,8 +408,8 @@ const App = {
   exportCSV() {
     const hist = Store.get('history', []);
     if (!hist.length) { this.toast('No saved measurements yet'); return; }
-    const rows = [['name', 'date', 'material', 'density_t_m3', 'volume_m3', 'volume_low_m3', 'volume_high_m3', 'tonnes', 'footprint_m2', 'peak_m', 'surface_seen', 'tape_checked']];
-    for (const h of hist) rows.push([h.name, h.date, h.material, h.density, h.volume.toFixed(3), h.lo.toFixed(3), h.hi.toFixed(3), h.tonnes.toFixed(3), h.footprint.toFixed(2), h.peak.toFixed(2), h.coverage.toFixed(3), h.tape ? 'yes' : 'no']);
+    const rows = [['name', 'date', 'material', 'density_t_m3', 'volume_m3', 'volume_low_m3', 'volume_high_m3', 'tonnes', 'footprint_m2', 'peak_m', 'surface_seen', 'walk', 'top', 'tape_checked']];
+    for (const h of hist) rows.push([h.name, h.date, h.material, h.density, h.volume.toFixed(3), h.lo.toFixed(3), h.hi.toFixed(3), h.tonnes.toFixed(3), h.footprint.toFixed(2), h.peak.toFixed(2), h.coverage.toFixed(3), h.walk || 'full', h.top || 'peaked', h.tape ? 'yes' : 'no']);
     const csv = rows.map(r => r.map(v => /[",;\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');
     this.download(new Blob(['﻿' + csv], { type: 'text/csv' }), 'photoscale_history.csv');
   }

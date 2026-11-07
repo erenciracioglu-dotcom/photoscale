@@ -3,9 +3,26 @@
    the same inputs the AR mode gets from ARCore: pose, camera image and depth. */
 const SIM_DEG = Math.PI / 180;
 const SimWorld = {
+  /* long stockyard piles: toe half-length a, half-width b, height H, ridge or flat top */
+  yardSpec(kind) {
+    const tanA = Math.tan(35 * SIM_DEG);
+    return { yard: { a: 15, b: 9, H: 3.6, peaked: false }, yardpk: { a: 14, b: 6, H: 6 * tanA, peaked: true },
+      yardbig: { a: 45, b: 15, H: 7, peaked: false }, tall: { a: 30, b: 25, H: 10, peaked: false } }[kind] || null;
+  },
   pile(kind) {
     const tanA = Math.tan(35 * SIM_DEG);
     if (kind === 'cone') return (x, z) => Math.max(0, 3.4 - Math.hypot(x, z) * tanA);
+    const yard = (a, b, H, peaked) => { // long stockyard pile: flat top (or ridge), 35° slopes, slight waviness
+      const run = H / tanA, pa = a - run, pb = peaked ? 0 : b - run;
+      return (x, z) => {
+        const dx = Math.max(0, Math.abs(x) - pa), dz = Math.max(0, Math.abs(z) - pb);
+        let h = H - Math.hypot(dx, dz) * tanA;
+        if (h > 0 && h < H - 0.05) h += 0.05 * Math.sin(0.9 * x + 0.3) * Math.cos(1.1 * z) * Math.min(1, h);
+        return Math.max(0, Math.min(H, h));
+      };
+    };
+    const ys = SimWorld.yardSpec(kind);
+    if (ys) return yard(ys.a, ys.b, ys.H, ys.peaked);
     if (kind === 'ridge') return (x, z) => {
       const ax = Math.max(0, Math.abs(x) - 3.5), r = Math.hypot(ax, z);
       return Math.max(0, Math.min(2.6, 3.1 - r * tanA));
@@ -20,8 +37,15 @@ const SimWorld = {
       return Math.max(0, h);
     };
   },
-  mesh(hf) {
-    const n = 241, L = 12, st = 2 * L / (n - 1);
+  dims(kind) { // footprint half-sizes (toe) and mesh extent used by the walking paths
+    if (kind === 'yard') return { a: 15, b: 9, L: 28, n: 351 };
+    if (kind === 'yardpk') return { a: 14, b: 6, L: 26, n: 331 };
+    if (kind === 'yardbig') return { a: 45, b: 15, L: 64, n: 385 };
+    if (kind === 'tall') return { a: 30, b: 25, L: 42, n: 301 };
+    return { a: 5.5, b: 5.5, L: 12, n: 241 };
+  },
+  mesh(hf, D) {
+    const n = (D && D.n) || 241, L = (D && D.L) || 12, st = 2 * L / (n - 1);
     const pos = new Float32Array(n * n * 3), nrm = new Float32Array(n * n * 3), H = new Float32Array(n * n);
     for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) H[k * n + i] = hf(-L + i * st, -L + k * st);
     for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) {
@@ -117,7 +141,8 @@ class SimSource {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error('WebGL2 is not available for the demo.');
     this.gl = gl;
-    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind));
+    this.dims = SimWorld.dims(this.o.kind);
+    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind), this.dims);
     this.truthVolume = this.world.truthVolume;
     this.prog = GLU.program(gl, SIM_VS, SIM_FS);
     const mk = (data, target) => { const b = gl.createBuffer(); gl.bindBuffer(target || gl.ARRAY_BUFFER, b); gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
@@ -138,7 +163,37 @@ class SimSource {
     this.p = [this.proj[0], this.proj[5], this.proj[8], this.proj[9]];
   }
   /* virtual walk: warm-up, then one loop plus overlap, slowing down at the end */
+  buildPath() {
+    const { a, b } = this.dims, d = this.o.offset || 4, segs = [];
+    const line = (x0, z0, x1, z1) => segs.push({ k: 'l', x0, z0, x1, z1, len: Math.hypot(x1 - x0, z1 - z0) });
+    const arc = (cx, cz, a0, a1) => segs.push({ k: 'a', cx, cz, a0, a1, len: Math.abs(a1 - a0) * d });
+    const p = this.o.path;
+    if (p === 'rect') {
+      line(0, -b - d, a, -b - d); arc(a, -b, -Math.PI / 2, 0); line(a + d, -b, a + d, b); arc(a, b, 0, Math.PI / 2);
+      line(a, b + d, -a, b + d); arc(-a, b, Math.PI / 2, Math.PI); line(-a - d, b, -a - d, -b); arc(-a, -b, Math.PI, 1.5 * Math.PI);
+      line(-a, -b - d, 0.08 * a, -b - d);
+    } else if (p === 'L') {
+      line(a + 0.5 * d, -b - d, -a, -b - d); arc(-a, -b, -Math.PI / 2, -Math.PI); line(-a - d, -b, -a - d, b + 0.5 * d);
+    } else { // 'side'
+      line(a + d, -b - d, -a - d, -b - d);
+    }
+    let L = 0; for (const g of segs) L += g.len;
+    return { segs, L };
+  }
+  pathAt(P, s) {
+    for (const g of P.segs) {
+      if (s <= g.len) {
+        const f = s / g.len;
+        if (g.k === 'l') return [g.x0 + (g.x1 - g.x0) * f, g.z0 + (g.z1 - g.z0) * f];
+        const ang = g.a0 + (g.a1 - g.a0) * f, d = this.o.offset || 4; return [g.cx + d * Math.cos(ang), g.cz + d * Math.sin(ang)];
+      }
+      s -= g.len;
+    }
+    const g = P.segs[P.segs.length - 1];
+    return g.k === 'l' ? [g.x1, g.z1] : [g.cx + (this.o.offset || 4) * Math.cos(g.a1), g.cz + (this.o.offset || 4) * Math.sin(g.a1)];
+  }
   truePose(t) {
+    if (this.o.path && this.o.path !== 'circle') return this.truePosePath(t);
     const o = this.o, warm = 1.5, T = o.walkTime;
     const u = Math.max(0, Math.min(1, (t - warm) / T));
     // speed ramps up, then halves over the last 12% (slowing down to close the loop)
@@ -154,6 +209,35 @@ class SimSource {
     let fx = [up[1] * fz[2] - up[2] * fz[1], up[2] * fz[0] - up[0] * fz[2], up[0] * fz[1] - up[1] * fz[0]]; l = Math.hypot(...fx); fx = fx.map(v => v / l);
     const fy = [fz[1] * fx[2] - fz[2] * fx[1], fz[2] * fx[0] - fz[0] * fx[2], fz[0] * fx[1] - fz[1] * fx[0]];
     return { R: [fx[0], fy[0], fz[0], fx[1], fy[1], fz[1], fx[2], fy[2], fz[2]], C, prog, walking: t >= warm, done: u >= 1 };
+  }
+  truePosePath(t) {
+    const o = this.o, warm = 1.5;
+    if (!this._path) this._path = this.buildPath();
+    const P = this._path, T = P.L / (o.walkSpeed || 0.75);
+    const u = Math.max(0, Math.min(1, (t - warm) / T));
+    const F = u <= 0.03 ? u * u / 0.06 : (u >= 0.97 ? 0.985 - (1 - u) * (1 - u) / 0.06 + 0.015 : 0.015 + (u - 0.03));
+    const sArc = Math.max(0, Math.min(1, F / 0.97)) * P.L;
+    const q = this.pathAt(P, sArc), w = 0.25 * Math.sin(0.5 * t);
+    const C = [q[0] + 0.15 * Math.sin(1.3 * t), 1.45 + 0.025 * Math.sin(2 * Math.PI * t / 0.55), q[1] + 0.15 * Math.cos(1.1 * t)];
+    const { a, b } = this.dims, ia = 0.72 * a, ib = 0.72 * b;
+    const T3 = [Math.max(-ia, Math.min(ia, C[0])) + w, 1.3 + 0.25 * Math.sin(0.23 * t), Math.max(-ib, Math.min(ib, C[2])) + 0.3 * Math.sin(0.31 * t)];
+    let fz = [C[0] - T3[0], C[1] - T3[1], C[2] - T3[2]]; let l = Math.hypot(...fz); fz = fz.map(v => v / l);
+    const roll = 2.5 * SIM_DEG * Math.sin(0.9 * t);
+    let up = [Math.sin(roll) * -fz[2], Math.cos(roll), Math.sin(roll) * fz[0]];
+    let fx = [up[1] * fz[2] - up[2] * fz[1], up[2] * fz[0] - up[0] * fz[2], up[0] * fz[1] - up[1] * fz[0]]; l = Math.hypot(...fx); fx = fx.map(v => v / l);
+    const fy = [fz[1] * fx[2] - fz[2] * fx[1], fz[2] * fx[0] - fz[0] * fx[2], fz[0] * fx[1] - fz[1] * fx[0]];
+    return { R: [fx[0], fy[0], fz[0], fx[1], fy[1], fz[1], fx[2], fy[2], fz[2]], C, prog: u, walking: t >= warm, done: u >= 1 };
+  }
+  /* a "Top edge" tap: sight line from the phone to the nearest point of the pile's
+     top edge (flat top outline or ridge line), with a small aiming error */
+  topEdgeRay(tp) {
+    const ys = SimWorld.yardSpec(this.o.kind); if (!ys) return null;
+    const run = ys.H / Math.tan(35 * SIM_DEG), pa = ys.a - run, pb = ys.peaked ? 0 : ys.b - run, C = tp.C;
+    const P = [Math.max(-pa, Math.min(pa, C[0])), ys.H, Math.max(-pb, Math.min(pb, C[2]))];
+    let D = [P[0] - C[0], P[1] - C[1], P[2] - C[2]], l = Math.hypot(...D);
+    const e = (this.o.aimErrDeg === undefined ? 0.3 : this.o.aimErrDeg) * SIM_DEG;
+    D = D.map(v => v / l + e * this.gauss()); l = Math.hypot(...D);
+    return D.map(v => v / l);
   }
   /* what ARCore would report: optional scale error, drift and yaw drift */
   reportedPose(tp, t) {
