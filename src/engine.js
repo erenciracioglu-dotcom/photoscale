@@ -34,7 +34,7 @@ let pts = new Float32Array(4 * 8192), nPts = 0, newPts = [];
 let flipMode = 1, flipLocked = false, flipStats = null, flipCount = 0;
 let nDepthFrames = 0, nDepthSamples = 0;
 let camPath = [];
-let topRays = [];
+let topRays = [], wallPts = [];
 let lastProgress = 0, lastMiniT = -1e9, procTimes = [], lostCount = 0;
 let occ = null, best = null, bx = null, by = null;
 
@@ -51,11 +51,15 @@ function reset(cfg) {
   flipMode = (cfg && cfg.flipMode !== undefined) ? cfg.flipMode : 1;
   flipLocked = !!(cfg && cfg.flipLocked); flipStats = null; flipCount = 0;
   nDepthFrames = 0; nDepthSamples = 0; camPath = []; lastProgress = 0; lastMiniT = -1e9;
-  procTimes = []; lostCount = 0; topRays = [];
+  procTimes = []; lostCount = 0; topRays = []; wallPts = [];
 }
 /* "Top edge" tap: the phone's position and viewing direction, aimed at the pile's skyline */
 function topEdge(C, D) {
   if (started && C && D) topRays.push({ C: [C[0], C[1], C[2]], D: [D[0], D[1], D[2]] });
+}
+/* "Wall" tap: a point on a wall the pile leans against (where the centre dot hit it) */
+function wallTap(P, D) {
+  if (started && P) wallPts.push({ P: [P[0], P[1], P[2]], D: D ? [D[0], D[1], D[2]] : null });
 }
 
 /* ------------------------------------------------------------------ */
@@ -858,20 +862,7 @@ function findSymmetry(A, Z, zt, opts) {
   if (body.length < 30) return null;
   const inPile = new Uint8Array(n); for (const j of pile) inPile[j] = 1;
   const xy = (j) => [X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s];
-  let sc = 0, ss = 0, sw = 0, lx = camPath[0], lz = camPath[2];
-  for (let q = 1; q < nP; q++) {
-    const x = camPath[q * 5], z = camPath[q * 5 + 2], dx = x - lx, dz = z - lz, l = Math.hypot(dx, dz);
-    if (l < 0.5) continue;
-    const f = 4 * Math.atan2(dz, dx);
-    sc += l * Math.cos(f); ss += l * Math.sin(f); sw += l; lx = x; lz = z;
-  }
-  let th;
-  if (sw > 2 && Math.hypot(sc, ss) / sw > 0.35) th = Math.atan2(ss, sc) / 4;
-  else {
-    let mx = 0, mz = 0; for (const j of body) { const p = xy(j); mx += p[0]; mz += p[1]; } mx /= body.length; mz /= body.length;
-    let cxx = 0, cxz = 0, czz = 0; for (const j of body) { const p = xy(j), x = p[0] - mx, z = p[1] - mz; cxx += x * x; cxz += x * z; czz += z * z; }
-    th = 0.5 * Math.atan2(2 * cxz, cxx - czz);
-  }
+  let th = pileAxis(body, xy);
   const range = (t) => { // trimmed extent of the pile body along direction t
     const c = Math.cos(t), sn = Math.sin(t), us = body.map(j => { const p = xy(j); return p[0] * c + p[1] * sn; }).sort((x, y) => x - y);
     const q = Math.floor(us.length * 0.003); return [us[q], us[us.length - 1 - q]];
@@ -1029,13 +1020,13 @@ function topFromRays(A, Zs, known, pl, rays) {
 /* the highest surface that rises no faster than the measured slope from any
    measured point (and from the pile outline at ground level): the shape a pile
    takes at its angle of repose. Used to continue slopes up to a known top. */
-function reposeEnvelope(Zs, known, region, nx, nz, s, tanA) {
+function reposeEnvelope(Zs, known, region, nx, nz, s, tanA, outH) {
   const n = nx * nz, F = new Float32Array(n), seed = new Uint8Array(n);
   // only well-supported cells anchor the slopes (a stray low point would
   // otherwise dig a cone-shaped pit around itself)
   for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
     const j = k * nx + i;
-    if (!region[j]) { F[j] = 0; seed[j] = 1; continue; }
+    if (!region[j]) { F[j] = outH ? outH[j] : 0; seed[j] = 1; continue; }
     F[j] = Infinity;
     if (!known[j]) continue;
     let c = 0;
@@ -1072,6 +1063,75 @@ function reposeEnvelope(Zs, known, region, nx, nz, s, tanA) {
   return F;
 }
 
+/* direction of the pile's axes: from the walking path (straight stretches
+   along the sides), or from the shape of the measured pile */
+function pileAxis(body, xy) {
+  const nP = camPath.length / 5;
+  let sc = 0, ss = 0, sw = 0, lx = camPath[0], lz = camPath[2];
+  for (let q = 1; q < nP; q++) {
+    const x = camPath[q * 5], z = camPath[q * 5 + 2], dx = x - lx, dz = z - lz, l = Math.hypot(dx, dz);
+    if (l < 0.5) continue;
+    const f = 4 * Math.atan2(dz, dx);
+    sc += l * Math.cos(f); ss += l * Math.sin(f); sw += l; lx = x; lz = z;
+  }
+  if (sw > 2 && Math.hypot(sc, ss) / sw > 0.35) return Math.atan2(ss, sc) / 4;
+  let mx = 0, mz = 0; for (const j of body) { const p = xy(j); mx += p[0]; mz += p[1]; } mx /= body.length; mz /= body.length;
+  let cxx = 0, cxz = 0, czz = 0; for (const j of body) { const p = xy(j), x = p[0] - mx, z = p[1] - mz; cxx += x * x; cxz += x * z; czz += z * z; }
+  return 0.5 * Math.atan2(2 * cxz, cxx - czz);
+}
+
+/* "Against a wall" (partial walk): the sides that were not walked lean on
+   walls, marked by taps on them. Walls are taken parallel to the pile's axes;
+   each tap gives a wall's position, and which side it closes off follows from
+   where it is relative to the walked sides. */
+function findWalls(A, Z, zt) {
+  const { nx, s, X0, Z0, obs, n } = A, nP = camPath.length / 5;
+  if (!wallPts.length) return null;
+  const zb = Math.max(0.25, 4 * zt), body = [];
+  for (let j = 0; j < n; j++) if (obs[j] && Z[j] > zb) body.push(j);
+  if (body.length < 30) return null;
+  const xy = (j) => [X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s];
+  const th = pileAxis(body, xy);
+  const e = [[Math.cos(th), Math.sin(th)], [-Math.sin(th), Math.cos(th)]];
+  const sc = (k, x, z) => x * e[k][0] + z * e[k][1];
+  const ext = [0, 1].map(k => {
+    const v = body.map(j => { const p = xy(j); return sc(k, p[0], p[1]); }).sort((a, b) => a - b);
+    const q = Math.floor(v.length * 0.01); return [v[q], v[v.length - 1 - q]];
+  });
+  const mid = ext.map(r => (r[0] + r[1]) / 2), len = ext.map(r => Math.max(1, r[1] - r[0]));
+  // a walked side runs along one axis, beside the middle of the pile: the far
+  // side across from it (along the other axis) is where a wall can be
+  const far = [0, 0];
+  for (const k of [0, 1]) {
+    const o = 1 - k; let sum = 0, cnt = 0;
+    for (let q = 0; q < nP; q++) {
+      const x = camPath[q * 5], z = camPath[q * 5 + 2];
+      if (Math.abs(sc(k, x, z) - mid[k]) < 0.3 * len[k]) { sum += sc(o, x, z); cnt++; }
+    }
+    if (cnt >= 10) far[o] = sum / cnt < mid[o] ? 1 : -1;
+  }
+  const groups = [[], []];
+  let ignored = 0;
+  for (const w of wallPts) {
+    const x = w.P[0], z = w.P[2];
+    const isW = [0, 1].map(k => far[k] ? (sc(k, x, z) - mid[k]) * far[k] > 0.25 * len[k] : Math.abs(sc(k, x, z) - mid[k]) > 0.5 * len[k]);
+    let k = -1;
+    if (isW[0] && !isW[1]) k = 0;
+    else if (isW[1] && !isW[0]) k = 1;
+    else if (isW[0] && isW[1] && w.D) { // at a far corner: the wall faces the viewer
+      const a0 = Math.abs(w.D[0] * e[0][0] + w.D[2] * e[0][1]), a1 = Math.abs(w.D[0] * e[1][0] + w.D[2] * e[1][1]);
+      k = a0 > a1 ? 0 : 1;
+    }
+    if (k >= 0) groups[k].push(sc(k, x, z)); else ignored++;
+  }
+  const list = [];
+  for (const k of [0, 1]) if (groups[k].length) {
+    const at = median(groups[k]);
+    list.push({ k, at, far: far[k] || (at > mid[k] ? 1 : -1), n: groups[k].length, spread: groups[k].length > 1 ? Math.max(...groups[k]) - Math.min(...groups[k]) : 0 });
+  }
+  return { th, e, list, ignored };
+}
+
 function finish(opts) {
   opts = opts || {};
   const partial = opts.walk === 'partial', flatTop = opts.top === 'flat';
@@ -1099,9 +1159,39 @@ function finish(opts) {
   };
   let Z = zOf(A);
 
-  /* symmetric completion (partial walk) */
-  let sym = null;
-  if (partial) {
+  /* partial walk: walls marked by taps, or symmetric completion */
+  let sym = null, walls = null;
+  const wallMode = partial && opts.far === 'wall', hw = opts.wallHeight > 0 ? opts.wallHeight : 1.5;
+  const wallOf = (x, z) => { // 1 if (x, z) is on the far side of a marked wall
+    if (!walls) return 0;
+    for (const w of walls.list) if ((x * walls.e[w.k][0] + z * walls.e[w.k][1] - w.at) * w.far > 0) return 1;
+    return 0;
+  };
+  const toWalls = (x, z, out) => { // the point, plus its projection onto each wall (and the corner)
+    out.push([x, z]);
+    if (!walls) return;
+    const s0 = x * walls.e[0][0] + z * walls.e[0][1], s1 = x * walls.e[1][0] + z * walls.e[1][1], q = [s0, s1];
+    const P = (a, b) => [a * walls.e[0][0] + b * walls.e[1][0], a * walls.e[0][1] + b * walls.e[1][1]];
+    for (const w of walls.list) { const r = q.slice(); r[w.k] = w.at; out.push(P(r[0], r[1])); }
+    if (walls.list.length === 2) { const r = q.slice(); for (const w of walls.list) r[w.k] = w.at; out.push(P(r[0], r[1])); }
+  };
+  if (wallMode) {
+    walls = findWalls(A, Z, zt);
+    if (walls && walls.list.length) {
+      // grow the window so it reaches the walls
+      const pts = [];
+      for (let q = 0; q < nP; q += 5) toWalls(camPath[q * 5], camPath[q * 5 + 2], pts);
+      let xa = A.X0, xb = A.X0 + (A.nx - 1) * s, za = A.Z0, zb = A.Z0 + (A.nz - 1) * s;
+      for (const [x, z] of pts) { xa = Math.min(xa, x); xb = Math.max(xb, x); za = Math.min(za, z); zb = Math.max(zb, z); }
+      const ci = (x) => Math.floor((x - g.x0) / s), ck = (z) => Math.floor((z - g.z0) / s);
+      A = gridBox(ci(xa) - 4, ck(za) - 4, ci(xb) + 4, ck(zb) + 4);
+      Z = zOf(A);
+      if (walls.ignored) warnings.push(walls.ignored + ' Wall tap' + (walls.ignored > 1 ? 's' : '') + ' could not be matched to a wall beside the pile. Aim the centre dot at the wall itself, next to the pile.');
+    } else {
+      walls = null;
+      warnings.push('No wall was marked' + (wallPts.length ? ' that could be matched to a side of the pile' : '') + '. During the walk, aim the centre dot at each wall next to the pile and tap Wall. The volume below only includes what was measured and is too low.');
+    }
+  } else if (partial) {
     sym = findSymmetry(A, Z, zt, opts);
     if (sym) {
       // grow the window so it also holds the mirror image of what was measured
@@ -1136,7 +1226,7 @@ function finish(opts) {
   const hullPts = [];
   for (let q = 0; q < nP; q += 3) {
     const x = camPath[q * 5], z = camPath[q * 5 + 2];
-    hullPts.push([x, z]);
+    toWalls(x, z, hullPts);
     if (sym) {
       const u = x * sym.c + z * sym.sn, v = -x * sym.sn + z * sym.c;
       for (const [uu, vv] of [[u, 2 * sym.v0 - v], [2 * sym.u0 - u, v], [2 * sym.u0 - u, 2 * sym.v0 - v]]) hullPts.push([uu * sym.c - vv * sym.sn, uu * sym.sn + vv * sym.c]);
@@ -1155,6 +1245,11 @@ function finish(opts) {
     }
     inside[k * nx + i] = inn ? 1 : 0;
   }
+  const beyond = new Uint8Array(n);
+  if (walls) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i;
+    if (wallOf(X0 + i * s, Z0 + k * s)) { beyond[j] = 1; inside[j] = 0; }
+  }
 
   /* pile candidates */
   const pileObs = new Uint8Array(n);
@@ -1164,7 +1259,7 @@ function finish(opts) {
   // Unseen cells that connect to open ground are only accepted close to the toe.
   const rc = Math.max(2, Math.round(0.3 / s));
   const barrier = new Uint8Array(n);
-  for (let j = 0; j < n; j++) barrier[j] = dist[j] <= rc ? 1 : 0;
+  for (let j = 0; j < n; j++) barrier[j] = (dist[j] <= rc || beyond[j]) ? 1 : 0;
   const ext = new Uint8Array(n), eq = new Int32Array(n);
   let eh = 0, et = 0;
   for (let j = 0; j < n; j++) {
@@ -1182,15 +1277,15 @@ function finish(opts) {
   // with a partial walk the unseen middle of each end can leave a gap; anything
   // inside the outline of the measured + mirrored pile belongs to the pile
   let inPH = null;
-  if (sym) {
+  if (sym || walls) {
     const pp = [];
-    for (let j = 0; j < n; j++) if (pileObs[j] && (j % 2 === 0)) pp.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
+    for (let j = 0; j < n; j++) if (pileObs[j] && (j % 2 === 0)) toWalls(X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s, pp);
     const ph = convexHull(pp), m = ph.length;
     inPH = new Uint8Array(n);
     if (m >= 3) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
       const x = X0 + i * s, z = Z0 + k * s; let inn = true;
       for (let e = 0; e < m && inn; e++) { const a = ph[e], b = ph[(e + 1) % m]; if ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]) < -1e-9) inn = false; }
-      inPH[k * nx + i] = inn ? 1 : 0;
+      inPH[k * nx + i] = (inn && !beyond[k * nx + i]) ? 1 : 0;
     }
   }
   const cand = new Uint8Array(n);
@@ -1337,7 +1432,18 @@ function finish(opts) {
   let topH = null, domeRise = 0, nCap = 0;
   if (U.length) {
     biharmonicFill(U, Zs, known, region, nx, nz);
-    if (flatTop || Hcap !== null) {
+    if (walls) {
+      // against walls: the hidden part rests on the walls (up to the wall
+      // height) and rises from there at the slope measured on the free sides
+      const outH = new Float32Array(n);
+      for (let j = 0; j < n; j++) outH[j] = beyond[j] ? hw : 0;
+      const env = reposeEnvelope(Zs, known, region, nx, nz, s, tanA, outH);
+      for (const u of U) Zs[u] = env[u];
+      if (flatTop || Hcap !== null) {
+        topH = Hcap !== null ? Math.max(Hcap, topDense) : topKnown;
+        for (const u of U) if (Zs[u] >= topH) { Zs[u] = topH; nCap++; }
+      }
+    } else if (flatTop || Hcap !== null) {
       topH = Hcap !== null ? Math.max(Hcap, topDense) : topKnown;
       const env = reposeEnvelope(Zs, known, region, nx, nz, s, tanA);
       for (const u of U) if (env[u] > Zs[u]) Zs[u] = env[u];
@@ -1419,8 +1525,9 @@ function finish(opts) {
 
   const pct = (x) => Math.round(V > 0 ? x / V * 100 : 0);
   if (!partial && progress < 0.95) warnings.push('The loop around the pile was not closed (' + Math.round(progress * 100) + '% of the way round). The unseen side was filled in by estimation. For piles you cannot walk round, choose "Only 1–2 sides".');
+  if (walls) notes.push('Against ' + (walls.list.length === 2 ? 'two walls' : 'a wall') + ': the hidden part of the pile was built out to the wall' + (walls.list.length === 2 ? 's' : '') + ' you marked, resting ' + hw.toFixed(1) + ' m up the wall' + (walls.list.length === 2 ? 's' : '') + ', with ' + (Math.atan(tanA) / DEG).toFixed(0) + '° slopes above (the slope measured on the free sides). ' + pct(Vfill) + '% of the volume was built this way.');
   if (sym) notes.push('Symmetric pile assumed: ' + pct(Vmir) + '% of the volume is a mirror image of the measured side(s); the centre line was found from ' + sym.method + '.');
-  const topFrom = topSource === 'entered' ? 'the pile height you entered' : (topSource === 'taps' ? 'your ' + taps.length + ' top-edge tap' + (taps.length > 1 ? 's' : '') + (taps.length > 1 ? ' (they agree within ±' + ((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2).toFixed(1) + ' m)' : '') : 'the highest measured height');
+  const topFrom = topSource === 'entered' ? 'the pile height you entered' : (topSource === 'taps' ? 'your ' + taps.length + ' top-edge tap' + (taps.length > 1 ? 's' : '') + (taps.length > 1 ? ' (they agree within ±' + (((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2) < 0.1 ? 'less than 0.1' : ((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2).toFixed(1)) + ' m)' : '') : 'the highest measured height');
   if (topSource === 'measured' && flatTop && topReach > 8 && Vfill > 0.1 * V) warnings.push('The highest point measured is ' + topKnown.toFixed(1) + ' m, about ' + Math.round(topReach) + ' m from where you walked — near the phone\'s measuring range. If the pile is taller than ' + topKnown.toFixed(1) + ' m, the volume is too low: measure again tapping Top edge 2–3 times along the walk, or enter the pile height.');
   if (flatTop && Vfill > 0.02 * V) notes.push('Flat top assumed where the top could not be seen (' + pct(Vfill) + '% of the volume), at ' + (topH || maxH).toFixed(2) + ' m from ' + topFrom + '.' + (topSource === 'measured' ? ' If the pile is taller than that, tap Top edge during the walk or enter the pile height.' : ''));
   if (!flatTop && Hcap !== null && Vfill > 0.02 * V) notes.push('The unseen top was rebuilt up to ' + topH.toFixed(2) + ' m, from ' + topFrom + '.');
@@ -1455,7 +1562,7 @@ function finish(opts) {
     length: len, width: wid, coverage, mirrorShare, progress, walked, loopMismatch: loopMis,
     ground: { a: pl.a, b: pl.b, c: pl.c, rms: pl.rms, n: pl.nIn },
     ringMean, ringRms, camHeight: camH, nPoints: nPts, nDepthFrames, nDepthSamples, duration: nP ? camPath[(nP - 1) * 5 + 3] - camPath[3] : 0,
-    flipMode, flipLocked, flipStats, warnings, notes, zt, domeRise, topHeight: topH, topSource, topMeasured: topKnown, topReach, slopeDeg: Math.atan(tanA) / DEG, tapHeights: taps.map(t => t.H), nTaps: topRays.length, walk: partial ? 'partial' : 'full', top: flatTop ? 'flat' : 'peaked', incomplete: partial && !sym,
+    flipMode, flipLocked, flipStats, warnings, notes, zt, domeRise, topHeight: topH, topSource, topMeasured: topKnown, topReach, slopeDeg: Math.atan(tanA) / DEG, tapHeights: taps.map(t => t.H), nTaps: topRays.length, walk: partial ? 'partial' : 'full', top: flatTop ? 'flat' : 'peaked', incomplete: partial && !sym && !walls, far: wallMode ? 'wall' : 'mirror', wallHeight: wallMode ? hw : null, walls: walls ? walls.list.map(w => ({ axis: w.k, at: w.at, taps: w.n, spread: w.spread })) : null, nWallTaps: wallPts.length,
     sym: sym ? { method: sym.method, angleDeg: sym.th * 180 / Math.PI, u0: sym.u0, v0: sym.v0, umin: sym.umin, umax: sym.umax, nA: sym.nA, nB: sym.nB } : null, cellSize: s,
     parts: { scale: eScale, fill: eFill, mirror: eMirror, base: eBase, loop: eLoop },
     grid: { nx, nz, s, x0: X0, z0: Z0, Z: Zout, mask }, center: [mx, mz], points: P, path
@@ -1467,7 +1574,7 @@ function state() {
   return { started, flipMode, flipLocked, nPts, nTracks: tracks.length, nDepthFrames, frames: fr.R.length };
 }
 
-return { CFG, reset, processFrame, start, finish, state, topEdge, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
+return { CFG, reset, processFrame, start, finish, state, topEdge, wallTap, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
 })();
 
 if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof importScripts === 'function') {
@@ -1478,6 +1585,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof impor
       else if (m.type === 'frame') { const o = PSE.processFrame(m); self.postMessage(o.msg, o.transfer); }
       else if (m.type === 'start') { PSE.start(m.center, m.t); }
       else if (m.type === 'top') { PSE.topEdge(m.C, m.D); }
+      else if (m.type === 'wall') { PSE.wallTap(m.P, m.D); }
       else if (m.type === 'finish') { const o = PSE.finish(m.opts); self.postMessage(o.msg, o.transfer); }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err && err.stack || err) });

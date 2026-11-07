@@ -7,7 +7,15 @@ const SimWorld = {
   yardSpec(kind) {
     const tanA = Math.tan(35 * SIM_DEG);
     return { yard: { a: 15, b: 9, H: 3.6, peaked: false }, yardpk: { a: 14, b: 6, H: 6 * tanA, peaked: true },
-      yardbig: { a: 45, b: 15, H: 7, peaked: false }, tall: { a: 30, b: 25, H: 10, peaked: false } }[kind] || null;
+      yardbig: { a: 45, b: 15, H: 7, peaked: false }, tall: { a: 30, b: 25, H: 10, peaked: false },
+      corner: { a: 15, b: 9, H: 3.6, peaked: false, hw: 1.5 }, cornerpk: { a: 14, b: 6, H: 6 * tanA, peaked: true, hw: 1.5 } }[kind] || null;
+  },
+  /* piles in a walled corner: walls (hw high, 0.4 m thick) on the +x end and the
+     +z side, where the free-standing pile's slope is hw high; beyond them, ground */
+  walls(kind) {
+    const ys = SimWorld.yardSpec(kind); if (!ys || !ys.hw) return null;
+    const run = ys.hw / Math.tan(35 * SIM_DEG);
+    return { xw: ys.a - run, zw: ys.b - run, hw: ys.hw, t: 0.4 };
   },
   pile(kind) {
     const tanA = Math.tan(35 * SIM_DEG);
@@ -21,7 +29,15 @@ const SimWorld = {
         return Math.max(0, Math.min(H, h));
       };
     };
-    const ys = SimWorld.yardSpec(kind);
+    const ys = SimWorld.yardSpec(kind), wl = SimWorld.walls(kind);
+    if (ys && wl) {
+      const f = yard(ys.a, ys.b, ys.H, ys.peaked);
+      return (x, z) => {
+        if (x < wl.xw && z < wl.zw) return f(x, z);
+        if ((x >= wl.xw && x < wl.xw + wl.t && z < wl.zw + wl.t) || (z >= wl.zw && z < wl.zw + wl.t && x < wl.xw + wl.t)) return wl.hw;
+        return 0;
+      };
+    }
     if (ys) return yard(ys.a, ys.b, ys.H, ys.peaked);
     if (kind === 'ridge') return (x, z) => {
       const ax = Math.max(0, Math.abs(x) - 3.5), r = Math.hypot(ax, z);
@@ -42,9 +58,11 @@ const SimWorld = {
     if (kind === 'yardpk') return { a: 14, b: 6, L: 26, n: 331 };
     if (kind === 'yardbig') return { a: 45, b: 15, L: 64, n: 385 };
     if (kind === 'tall') return { a: 30, b: 25, L: 42, n: 301 };
+    if (kind === 'corner') return { a: 15, b: 9, L: 28, n: 351 };
+    if (kind === 'cornerpk') return { a: 14, b: 6, L: 26, n: 331 };
     return { a: 5.5, b: 5.5, L: 12, n: 241 };
   },
-  mesh(hf, D) {
+  mesh(hf, D, inPile) {
     const n = (D && D.n) || 241, L = (D && D.L) || 12, st = 2 * L / (n - 1);
     const pos = new Float32Array(n * n * 3), nrm = new Float32Array(n * n * 3), H = new Float32Array(n * n);
     for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) H[k * n + i] = hf(-L + i * st, -L + k * st);
@@ -61,6 +79,19 @@ const SimWorld = {
       const a = k * n + i, b = a + 1, c = a + n, d = c + 1;
       idx[q++] = a; idx[q++] = c; idx[q++] = d; idx[q++] = a; idx[q++] = d; idx[q++] = b;
       V += st * st / 6 * (H[a] + H[d] + H[c] + H[a] + H[d] + H[b]);
+    }
+    if (inPile) { // volume of the rendered surface on the pile side of the walls only
+      V = 0; const m = 4, ss = st / m;
+      for (let k = 0; k < n - 1; k++) for (let i = 0; i < n - 1; i++) {
+        const a = H[k * n + i], b = H[k * n + i + 1], c = H[(k + 1) * n + i], d = H[(k + 1) * n + i + 1];
+        for (let q = 0; q < m; q++) for (let r = 0; r < m; r++) {
+          const fx = (r + 0.5) / m, fz = (q + 0.5) / m, x = -L + (i + fx) * st, z = -L + (k + fz) * st;
+          if (!inPile(x, z)) continue;
+          // height on the same two triangles as the rendered mesh (a-d-b and a-c-d)
+          const h = fz <= fx ? a + (b - a) * fx + (d - b) * fz : a + (c - a) * fz + (d - c) * fx;
+          V += h * ss * ss;
+        }
+      }
     }
     return { pos, nrm, idx, truthVolume: V, hf, n, L, st, H };
   },
@@ -142,7 +173,8 @@ class SimSource {
     if (!gl) throw new Error('WebGL2 is not available for the demo.');
     this.gl = gl;
     this.dims = SimWorld.dims(this.o.kind);
-    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind), this.dims);
+    const wl = SimWorld.walls(this.o.kind);
+    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind), this.dims, wl ? (x, z) => x < wl.xw && z < wl.zw : null);
     this.truthVolume = this.world.truthVolume;
     this.prog = GLU.program(gl, SIM_VS, SIM_FS);
     const mk = (data, target) => { const b = gl.createBuffer(); gl.bindBuffer(target || gl.ARRAY_BUFFER, b); gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
@@ -172,6 +204,9 @@ class SimSource {
       line(0, -b - d, a, -b - d); arc(a, -b, -Math.PI / 2, 0); line(a + d, -b, a + d, b); arc(a, b, 0, Math.PI / 2);
       line(a, b + d, -a, b + d); arc(-a, b, Math.PI / 2, Math.PI); line(-a - d, b, -a - d, -b); arc(-a, -b, Math.PI, 1.5 * Math.PI);
       line(-a, -b - d, 0.08 * a, -b - d);
+    } else if (p === 'Lw') { // L walk in a walled corner: from the end wall along the free side, round, along the free end to the side wall
+      const wl = SimWorld.walls(this.o.kind);
+      line(wl.xw - 0.6, -b - d, -a, -b - d); arc(-a, -b, -Math.PI / 2, -Math.PI); line(-a - d, -b, -a - d, wl.zw - 0.6);
     } else if (p === 'L') {
       line(a + 0.5 * d, -b - d, -a, -b - d); arc(-a, -b, -Math.PI / 2, -Math.PI); line(-a - d, -b, -a - d, b + 0.5 * d);
     } else { // 'side'
@@ -238,6 +273,16 @@ class SimSource {
     const e = (this.o.aimErrDeg === undefined ? 0.3 : this.o.aimErrDeg) * SIM_DEG;
     D = D.map(v => v / l + e * this.gauss()); l = Math.hypot(...D);
     return D.map(v => v / l);
+  }
+  /* a "Wall" tap: the point where the centre dot meets the nearest wall face
+     (a bare part next to the pile), with a few cm of depth noise */
+  wallPoint(tp) {
+    const wl = SimWorld.walls(this.o.kind); if (!wl) return null;
+    const C = tp.C, toEnd = Math.abs(C[0] - wl.xw), toSide = Math.abs(C[2] - wl.zw);
+    const P = toEnd < toSide ? [wl.xw, 0.8, C[2] + 1.5] : [C[0] + 1.5, 0.8, wl.zw];
+    for (let i = 0; i < 3; i += 2) P[i] += 0.03 * this.gauss();
+    const D = [P[0] - C[0], P[1] - C[1], P[2] - C[2]], l = Math.hypot(...D);
+    return { P, D: D.map(v => v / l) };
   }
   /* what ARCore would report: optional scale error, drift and yaw drift */
   reportedPose(tp, t) {

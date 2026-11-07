@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="utf-8"><style>.hidden{display:none}</style></head><body>
-<div id="ov" class="hidden"><div id="ov-msg"></div><div id="ov-arrow"></div><button id="ov-main"></button><button id="ov-ref"></button><button id="ov-topedge"></button><button id="ov-close"></button><canvas id="ov-ring" width="200" height="200"></canvas><div id="ov-pct"></div><canvas id="ov-mini" width="200" height="200"></canvas><div id="ov-stats" class="hidden"></div></div>
+<div id="ov" class="hidden"><div id="ov-msg"></div><div id="ov-arrow"></div><button id="ov-main"></button><button id="ov-ref"></button><button id="ov-topedge"></button><button id="ov-wall"></button><button id="ov-close"></button><canvas id="ov-ring" width="200" height="200"></canvas><div id="ov-pct"></div><canvas id="ov-mini" width="200" height="200"></canvas><div id="ov-stats" class="hidden"></div></div>
 <div id="busy" class="hidden"><div id="busy-msg"></div></div>
 <div id="sim-stage" class="hidden"></div>
 <script type="text/plain" id="engine-src"></script>
@@ -12,7 +12,7 @@ window.runTest = async function(opts) {
   const sim = new SimSource(opts); sim.init(canvas);
   const cap = new Capture({ onResult(){}, onError(m){ console.log('ERR', m); }, onExit(){} });
   const sz = PILE_SIZES[opts.size || 'small'];
-  cap.begin(sim, { walk: opts.walk || 'full', top: opts.top || 'peaked', baseWidth: opts.baseWidth || 0, topHeight: opts.topHeight || 0 }, { cfg: Object.assign({ cellSize: sz.cellSize, gridN: sz.gridN }, opts.cfg || {}) });
+  cap.begin(sim, { walk: opts.walk || 'full', top: opts.top || 'peaked', baseWidth: opts.baseWidth || 0, topHeight: opts.topHeight || 0, far: opts.far || 'mirror', wallHeight: opts.wallHeight || 0 }, { cfg: Object.assign({ cellSize: sz.cellSize, gridN: sz.gridN }, opts.cfg || {}) });
   const t0 = performance.now();
   const r = await SimRunner.test(cap, sim, (s) => console.log(s));
   if (r.error) return { error: r.error };
@@ -20,6 +20,6 @@ window.runTest = async function(opts) {
   return { truth: +sim.truthVolume.toFixed(2), volume: +r.volume.toFixed(2), errPct: +((r.volume - sim.truthVolume)/sim.truthVolume*100).toFixed(2),
     plusMinusPct: +(1.5*r.sigma/r.volume*100).toFixed(1), coverage: +r.coverage.toFixed(3), maxH: +r.maxHeight.toFixed(2), flip: r.flipMode, flipLocked: r.flipLocked,
     flipStats: r.flipStats, nPoints: r.nPoints, nDepth: r.nDepthFrames, warnings: r.warnings, loopMis: r.loopMismatch, groundRms: r.ground.rms, camH: +r.camHeight.toFixed(2),
-    progress: +r.progress.toFixed(3), parts: r.parts, mirrored: +(r.mirroredVolume||0).toFixed(1), filled: +r.filledVolume.toFixed(1), sym: r.sym, notes: r.notes, domeRise: +(r.domeRise||0).toFixed(2), topHeight: r.topHeight === null ? null : +r.topHeight.toFixed(2), topSource: r.topSource, topMeasured: +r.topMeasured.toFixed(2), topReach: +(r.topReach||0).toFixed(1), slopeDeg: +r.slopeDeg.toFixed(1), tapHeights: r.tapHeights.map(h => +h.toFixed(2)), nTaps: r.nTaps, walked: +(r.walked||0).toFixed(1), secs: +((performance.now()-t0)/1000).toFixed(1) };
+    progress: +r.progress.toFixed(3), parts: r.parts, mirrored: +(r.mirroredVolume||0).toFixed(1), filled: +r.filledVolume.toFixed(1), sym: r.sym, notes: r.notes, domeRise: +(r.domeRise||0).toFixed(2), topHeight: r.topHeight === null ? null : +r.topHeight.toFixed(2), topSource: r.topSource, topMeasured: +r.topMeasured.toFixed(2), topReach: +(r.topReach||0).toFixed(1), slopeDeg: +r.slopeDeg.toFixed(1), tapHeights: r.tapHeights.map(h => +h.toFixed(2)), nTaps: r.nTaps, far: r.far, walls: r.walls, nWallTaps: r.nWallTaps, incomplete: r.incomplete, walked: +(r.walked||0).toFixed(1), secs: +((performance.now()-t0)/1000).toFixed(1) };
 };
 </script></body></html>

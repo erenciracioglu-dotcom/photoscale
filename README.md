@@ -16,7 +16,9 @@ Walk one loop around a stockpile with your Android phone and get its **volume (m
 Dots: red = new detail, blue = 3D position being worked out, green = fixed in 3D.
 
 ## Pile setup options
-- **How can you walk?** *All the way round* (default), or *Only 1–2 sides* for piles against a shed wall or in a corner. With a partial walk, walk the full length of one long side and, if you can, one end. The sides you could not reach are filled in as a mirror image of the measured ones, so this assumes a symmetrical pile. The pile's axes come from the direction of your walk. The centre line comes from the walked end, where both toes are seen; failing that, from a base width you enter, or for peaked piles from the crest.
+- **How can you walk?** *All the way round* (default), or *Only 1–2 sides*. With a partial walk, walk the full length of one long side and, if you can, one end, then say what is on the sides you can't reach:
+  - *Mirror image* (a free-standing pile): the unreached sides are a mirror image of the measured ones. The pile's axes come from the direction of your walk; the centre line from the walked end, where both toes are seen; failing that, from a base width you enter, or for peaked piles from the crest.
+  - *Against a wall* (e.g. a shed corner): enter the wall height, and during the walk tap **Wall** once at each wall the pile leans on, aiming the centre dot at a bare part of the wall next to the pile. The hidden part is built out to the walls, resting on them up to the wall height, with slopes above at the angle measured on the free sides. Walls are taken parallel to the pile's sides.
 - **Top you can't see:** *Rounded / peaked* continues the slopes into a peak (cones, ridges). *Flat* continues the measured slopes straight up at their own angle until they meet a flat top, for tall stacker piles whose top cannot be seen from the ground.
 - **Tall piles (over about 5 m):** the phone measures the surface only up to roughly 8–10 m away, so it may not reach the top edge. Tap **Top edge** two or three times during the walk while aiming the centre dot at the pile's skyline: the measured slope, continued upwards, meets that sight line at the top edge, which gives the height. A known height can be entered instead (*Pile height*).
 - **Pile length:** *up to 25 m* (10 cm grid), *25–80 m* (25 cm grid), *80–300 m* (50 cm grid, covers a 500 m square), so long stockyard piles fit.
@@ -45,6 +47,8 @@ Dots: red = new detail, blue = 3D position being worked out, green = fixed in 3D
 | Ridge 28 × 12 m, 4.2 m: one long side + one end walked | 561.79 | 558.30 | −0.6% |
 | Big pile 90 × 30 m, 7 m, flat top: one long side + one end, 3 taps, *80–300 m* | 11234.9 | 11283.6 | +0.4% |
 | Tall pile 60 × 50 m, 10 m, flat top: one long side + one end, 3 taps | 16426.3 | 16378.2 | −0.3% |
+| Flat-topped pile 3.6 m high in a corner of 1.5 m walls: free long side + free end, 2 Wall taps, 3 taps | 1097.28 | 1114.86 | +1.6% |
+| Ridge 4.2 m high in a corner of 1.5 m walls: free long side + free end, 2 Wall taps | 521.12 | 533.23 | +2.3% |
 
 Without top-edge taps the flat top is set by the highest point the phone measured. On the simulated piles that gave −12% to +4%; each time the app warned that the top was near the phone's measuring range. A ridge walked on one long side only, with no base width entered, is reported as incomplete (the hidden half cannot be placed) instead of giving a wrong number.
 
@@ -52,7 +56,8 @@ These are synthetic tests of the algorithms. Real piles add things the simulatio
 
 ## Limits
 - Needs Chrome on Android with ARCore. iPhone Safari does not support WebXR AR.
-- Free-standing piles, walked all the way round or, if symmetrical, on 1–2 sides. A pile that touches a wall is not handled yet: mirroring would leave out the part against the wall. The base is assumed to continue the ground level around the pile.
+- Free-standing piles walked all the way round, symmetrical piles walked on 1–2 sides, or piles leaning on walls (walls parallel to the pile's sides; the material is assumed to rest on each wall up to its full height). The simulated ridge in a corner touched its end wall only at the crest, which is why it came out 2.3% high. The base is assumed to continue the ground level around the pile.
+- Nothing is sent anywhere: the app makes no network requests, so it never uses a server or anyone's computer.
 - ARCore depth reaches roughly 5–8 m; beyond that only the tracked dots measure the surface, so stay reasonably close.
 
 ## Development

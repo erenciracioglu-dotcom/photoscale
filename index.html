@@ -164,6 +164,7 @@ details.card[open] summary::before{content:'▾ '}
 .lg.mir{background:linear-gradient(90deg,#8fa6d9,#a6e0ea,#b0e3b7,#f0deb0)}
 .lg.fill{background:#8a8f96}
 .lg.path{background:#ffcc1a;height:3px;border-radius:2px}
+.sub-opt{margin-top:14px}
 </style>
 </head>
 <body>
@@ -200,6 +201,12 @@ details.card[open] summary::before{content:'▾ '}
           <div class="opt-h">How can you walk?</div>
           <div class="segs" id="opt-walk"><button class="seg" data-v="full">All the way round</button><button class="seg" data-v="partial">Only 1–2 sides</button></div>
           <p class="opt-help" id="help-walk"></p>
+          <div class="hidden sub-opt" id="row-far">
+            <div class="opt-h">The sides you can't walk</div>
+            <div class="segs" id="opt-far"><button class="seg" data-v="mirror">Mirror image</button><button class="seg" data-v="wall">Against a wall</button></div>
+            <p class="opt-help" id="help-far"></p>
+          </div>
+          <label class="field hidden" id="row-wallh"><span>Wall height (m)</span><input id="in-wallh" type="number" inputmode="decimal" step="0.1" min="0.3" max="10" placeholder="1.5"></label>
           <label class="field hidden" id="row-width"><span>Base width (m) — needed only if you can walk one long side and no end</span><input id="in-width" type="number" inputmode="decimal" step="0.1" min="1" placeholder="optional"></label>
         </div>
         <div class="opt">
@@ -299,7 +306,7 @@ details.card[open] summary::before{content:'▾ '}
         <h3>Piles you can't walk round, tall piles, big piles</h3>
         <ul class="plain">
           <li><b>Only 1–2 sides reachable</b> (a pile against a shed wall or in a corner): choose <i>Only 1–2 sides</i>. Walk the full length of one long side and, if you can, one end. The sides you could not reach are filled in as a mirror image of the ones you measured, so this assumes the pile is symmetrical. Walking one end as well lets Photoscale find the pile's centre line from both of its toes. If you can only walk one long side, enter the pile's base width instead (from the stacker's settings or a tape) — otherwise the hidden half cannot be placed and only the measured half is counted.</li>
-          <li><b>If the pile touches the wall</b> rather than standing clear of it, the mirror image is not right — the part against the wall would be missed. Measure such piles with care and compare with known tonnages.</li>
+          <li><b>Piles against a wall</b> (for example in a corner of the shed): choose <i>Only 1–2 sides</i>, then <i>Against a wall</i>, and enter the wall height. Walk the free sides as above. At each wall the pile leans on, aim the centre dot at a bare part of the wall next to the pile and tap <b>Wall</b> once (the walk usually starts and ends right next to a wall). Photoscale then builds the hidden part out to the walls: resting on each wall up to its height, with slopes above at the angle measured on the free sides.</li>
           <li><b>Tall piles with a flat top</b> you cannot see from the ground: choose <i>Flat</i>. The hidden top is taken as flat. With <i>Rounded / peaked</i>, the slopes are continued into a rounded peak instead, which suits cones and ridges but would overestimate a flat-topped pile.</li>
           <li><b>Piles taller than about 5 m.</b> The phone measures the surface only up to roughly 8–10 m away, so on a tall pile it may not reach the top edge. Stop two or three times along the pile, aim the centre dot at the pile's top edge against the sky (or the ridge, for a peaked pile) and tap <b>Top edge</b>. Photoscale continues the measured slope upwards until it meets that sight line, which gives the height. Tap from a side you are walking along, with the lower slope in view. If you know the height (from the stacker or a laser meter), you can enter it instead under <i>Pile height</i>.</li>
           <li><b>Long stockyard piles</b> (say 200 × 50 m): choose <i>80–300 m</i>. Walking all the way round takes long and lets tracking drift; walking one long side plus one end with <i>Only 1–2 sides</i> halves the walk. Use a long tape check (markers 30–50 m apart) on big piles.</li>
@@ -354,6 +361,7 @@ details.card[open] summary::before{content:'▾ '}
   <div class="ov-bottom">
     <div class="ov-ringwrap"><canvas id="ov-ring" width="240" height="240"></canvas><div id="ov-pct" class="ov-pct">0%</div></div>
     <div class="ov-btns">
+      <button id="ov-wall" class="ov-small hidden">Wall</button>
       <button id="ov-topedge" class="ov-small hidden">Top edge</button>
       <button id="ov-ref" class="ov-small hidden">Mark A</button>
       <button id="ov-main" class="ov-main" disabled>START</button>
@@ -401,7 +409,7 @@ let pts = new Float32Array(4 * 8192), nPts = 0, newPts = [];
 let flipMode = 1, flipLocked = false, flipStats = null, flipCount = 0;
 let nDepthFrames = 0, nDepthSamples = 0;
 let camPath = [];
-let topRays = [];
+let topRays = [], wallPts = [];
 let lastProgress = 0, lastMiniT = -1e9, procTimes = [], lostCount = 0;
 let occ = null, best = null, bx = null, by = null;
 
@@ -418,11 +426,15 @@ function reset(cfg) {
   flipMode = (cfg && cfg.flipMode !== undefined) ? cfg.flipMode : 1;
   flipLocked = !!(cfg && cfg.flipLocked); flipStats = null; flipCount = 0;
   nDepthFrames = 0; nDepthSamples = 0; camPath = []; lastProgress = 0; lastMiniT = -1e9;
-  procTimes = []; lostCount = 0; topRays = [];
+  procTimes = []; lostCount = 0; topRays = []; wallPts = [];
 }
 /* "Top edge" tap: the phone's position and viewing direction, aimed at the pile's skyline */
 function topEdge(C, D) {
   if (started && C && D) topRays.push({ C: [C[0], C[1], C[2]], D: [D[0], D[1], D[2]] });
+}
+/* "Wall" tap: a point on a wall the pile leans against (where the centre dot hit it) */
+function wallTap(P, D) {
+  if (started && P) wallPts.push({ P: [P[0], P[1], P[2]], D: D ? [D[0], D[1], D[2]] : null });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1225,20 +1237,7 @@ function findSymmetry(A, Z, zt, opts) {
   if (body.length < 30) return null;
   const inPile = new Uint8Array(n); for (const j of pile) inPile[j] = 1;
   const xy = (j) => [X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s];
-  let sc = 0, ss = 0, sw = 0, lx = camPath[0], lz = camPath[2];
-  for (let q = 1; q < nP; q++) {
-    const x = camPath[q * 5], z = camPath[q * 5 + 2], dx = x - lx, dz = z - lz, l = Math.hypot(dx, dz);
-    if (l < 0.5) continue;
-    const f = 4 * Math.atan2(dz, dx);
-    sc += l * Math.cos(f); ss += l * Math.sin(f); sw += l; lx = x; lz = z;
-  }
-  let th;
-  if (sw > 2 && Math.hypot(sc, ss) / sw > 0.35) th = Math.atan2(ss, sc) / 4;
-  else {
-    let mx = 0, mz = 0; for (const j of body) { const p = xy(j); mx += p[0]; mz += p[1]; } mx /= body.length; mz /= body.length;
-    let cxx = 0, cxz = 0, czz = 0; for (const j of body) { const p = xy(j), x = p[0] - mx, z = p[1] - mz; cxx += x * x; cxz += x * z; czz += z * z; }
-    th = 0.5 * Math.atan2(2 * cxz, cxx - czz);
-  }
+  let th = pileAxis(body, xy);
   const range = (t) => { // trimmed extent of the pile body along direction t
     const c = Math.cos(t), sn = Math.sin(t), us = body.map(j => { const p = xy(j); return p[0] * c + p[1] * sn; }).sort((x, y) => x - y);
     const q = Math.floor(us.length * 0.003); return [us[q], us[us.length - 1 - q]];
@@ -1396,13 +1395,13 @@ function topFromRays(A, Zs, known, pl, rays) {
 /* the highest surface that rises no faster than the measured slope from any
    measured point (and from the pile outline at ground level): the shape a pile
    takes at its angle of repose. Used to continue slopes up to a known top. */
-function reposeEnvelope(Zs, known, region, nx, nz, s, tanA) {
+function reposeEnvelope(Zs, known, region, nx, nz, s, tanA, outH) {
   const n = nx * nz, F = new Float32Array(n), seed = new Uint8Array(n);
   // only well-supported cells anchor the slopes (a stray low point would
   // otherwise dig a cone-shaped pit around itself)
   for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
     const j = k * nx + i;
-    if (!region[j]) { F[j] = 0; seed[j] = 1; continue; }
+    if (!region[j]) { F[j] = outH ? outH[j] : 0; seed[j] = 1; continue; }
     F[j] = Infinity;
     if (!known[j]) continue;
     let c = 0;
@@ -1439,6 +1438,75 @@ function reposeEnvelope(Zs, known, region, nx, nz, s, tanA) {
   return F;
 }
 
+/* direction of the pile's axes: from the walking path (straight stretches
+   along the sides), or from the shape of the measured pile */
+function pileAxis(body, xy) {
+  const nP = camPath.length / 5;
+  let sc = 0, ss = 0, sw = 0, lx = camPath[0], lz = camPath[2];
+  for (let q = 1; q < nP; q++) {
+    const x = camPath[q * 5], z = camPath[q * 5 + 2], dx = x - lx, dz = z - lz, l = Math.hypot(dx, dz);
+    if (l < 0.5) continue;
+    const f = 4 * Math.atan2(dz, dx);
+    sc += l * Math.cos(f); ss += l * Math.sin(f); sw += l; lx = x; lz = z;
+  }
+  if (sw > 2 && Math.hypot(sc, ss) / sw > 0.35) return Math.atan2(ss, sc) / 4;
+  let mx = 0, mz = 0; for (const j of body) { const p = xy(j); mx += p[0]; mz += p[1]; } mx /= body.length; mz /= body.length;
+  let cxx = 0, cxz = 0, czz = 0; for (const j of body) { const p = xy(j), x = p[0] - mx, z = p[1] - mz; cxx += x * x; cxz += x * z; czz += z * z; }
+  return 0.5 * Math.atan2(2 * cxz, cxx - czz);
+}
+
+/* "Against a wall" (partial walk): the sides that were not walked lean on
+   walls, marked by taps on them. Walls are taken parallel to the pile's axes;
+   each tap gives a wall's position, and which side it closes off follows from
+   where it is relative to the walked sides. */
+function findWalls(A, Z, zt) {
+  const { nx, s, X0, Z0, obs, n } = A, nP = camPath.length / 5;
+  if (!wallPts.length) return null;
+  const zb = Math.max(0.25, 4 * zt), body = [];
+  for (let j = 0; j < n; j++) if (obs[j] && Z[j] > zb) body.push(j);
+  if (body.length < 30) return null;
+  const xy = (j) => [X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s];
+  const th = pileAxis(body, xy);
+  const e = [[Math.cos(th), Math.sin(th)], [-Math.sin(th), Math.cos(th)]];
+  const sc = (k, x, z) => x * e[k][0] + z * e[k][1];
+  const ext = [0, 1].map(k => {
+    const v = body.map(j => { const p = xy(j); return sc(k, p[0], p[1]); }).sort((a, b) => a - b);
+    const q = Math.floor(v.length * 0.01); return [v[q], v[v.length - 1 - q]];
+  });
+  const mid = ext.map(r => (r[0] + r[1]) / 2), len = ext.map(r => Math.max(1, r[1] - r[0]));
+  // a walked side runs along one axis, beside the middle of the pile: the far
+  // side across from it (along the other axis) is where a wall can be
+  const far = [0, 0];
+  for (const k of [0, 1]) {
+    const o = 1 - k; let sum = 0, cnt = 0;
+    for (let q = 0; q < nP; q++) {
+      const x = camPath[q * 5], z = camPath[q * 5 + 2];
+      if (Math.abs(sc(k, x, z) - mid[k]) < 0.3 * len[k]) { sum += sc(o, x, z); cnt++; }
+    }
+    if (cnt >= 10) far[o] = sum / cnt < mid[o] ? 1 : -1;
+  }
+  const groups = [[], []];
+  let ignored = 0;
+  for (const w of wallPts) {
+    const x = w.P[0], z = w.P[2];
+    const isW = [0, 1].map(k => far[k] ? (sc(k, x, z) - mid[k]) * far[k] > 0.25 * len[k] : Math.abs(sc(k, x, z) - mid[k]) > 0.5 * len[k]);
+    let k = -1;
+    if (isW[0] && !isW[1]) k = 0;
+    else if (isW[1] && !isW[0]) k = 1;
+    else if (isW[0] && isW[1] && w.D) { // at a far corner: the wall faces the viewer
+      const a0 = Math.abs(w.D[0] * e[0][0] + w.D[2] * e[0][1]), a1 = Math.abs(w.D[0] * e[1][0] + w.D[2] * e[1][1]);
+      k = a0 > a1 ? 0 : 1;
+    }
+    if (k >= 0) groups[k].push(sc(k, x, z)); else ignored++;
+  }
+  const list = [];
+  for (const k of [0, 1]) if (groups[k].length) {
+    const at = median(groups[k]);
+    list.push({ k, at, far: far[k] || (at > mid[k] ? 1 : -1), n: groups[k].length, spread: groups[k].length > 1 ? Math.max(...groups[k]) - Math.min(...groups[k]) : 0 });
+  }
+  return { th, e, list, ignored };
+}
+
 function finish(opts) {
   opts = opts || {};
   const partial = opts.walk === 'partial', flatTop = opts.top === 'flat';
@@ -1466,9 +1534,39 @@ function finish(opts) {
   };
   let Z = zOf(A);
 
-  /* symmetric completion (partial walk) */
-  let sym = null;
-  if (partial) {
+  /* partial walk: walls marked by taps, or symmetric completion */
+  let sym = null, walls = null;
+  const wallMode = partial && opts.far === 'wall', hw = opts.wallHeight > 0 ? opts.wallHeight : 1.5;
+  const wallOf = (x, z) => { // 1 if (x, z) is on the far side of a marked wall
+    if (!walls) return 0;
+    for (const w of walls.list) if ((x * walls.e[w.k][0] + z * walls.e[w.k][1] - w.at) * w.far > 0) return 1;
+    return 0;
+  };
+  const toWalls = (x, z, out) => { // the point, plus its projection onto each wall (and the corner)
+    out.push([x, z]);
+    if (!walls) return;
+    const s0 = x * walls.e[0][0] + z * walls.e[0][1], s1 = x * walls.e[1][0] + z * walls.e[1][1], q = [s0, s1];
+    const P = (a, b) => [a * walls.e[0][0] + b * walls.e[1][0], a * walls.e[0][1] + b * walls.e[1][1]];
+    for (const w of walls.list) { const r = q.slice(); r[w.k] = w.at; out.push(P(r[0], r[1])); }
+    if (walls.list.length === 2) { const r = q.slice(); for (const w of walls.list) r[w.k] = w.at; out.push(P(r[0], r[1])); }
+  };
+  if (wallMode) {
+    walls = findWalls(A, Z, zt);
+    if (walls && walls.list.length) {
+      // grow the window so it reaches the walls
+      const pts = [];
+      for (let q = 0; q < nP; q += 5) toWalls(camPath[q * 5], camPath[q * 5 + 2], pts);
+      let xa = A.X0, xb = A.X0 + (A.nx - 1) * s, za = A.Z0, zb = A.Z0 + (A.nz - 1) * s;
+      for (const [x, z] of pts) { xa = Math.min(xa, x); xb = Math.max(xb, x); za = Math.min(za, z); zb = Math.max(zb, z); }
+      const ci = (x) => Math.floor((x - g.x0) / s), ck = (z) => Math.floor((z - g.z0) / s);
+      A = gridBox(ci(xa) - 4, ck(za) - 4, ci(xb) + 4, ck(zb) + 4);
+      Z = zOf(A);
+      if (walls.ignored) warnings.push(walls.ignored + ' Wall tap' + (walls.ignored > 1 ? 's' : '') + ' could not be matched to a wall beside the pile. Aim the centre dot at the wall itself, next to the pile.');
+    } else {
+      walls = null;
+      warnings.push('No wall was marked' + (wallPts.length ? ' that could be matched to a side of the pile' : '') + '. During the walk, aim the centre dot at each wall next to the pile and tap Wall. The volume below only includes what was measured and is too low.');
+    }
+  } else if (partial) {
     sym = findSymmetry(A, Z, zt, opts);
     if (sym) {
       // grow the window so it also holds the mirror image of what was measured
@@ -1503,7 +1601,7 @@ function finish(opts) {
   const hullPts = [];
   for (let q = 0; q < nP; q += 3) {
     const x = camPath[q * 5], z = camPath[q * 5 + 2];
-    hullPts.push([x, z]);
+    toWalls(x, z, hullPts);
     if (sym) {
       const u = x * sym.c + z * sym.sn, v = -x * sym.sn + z * sym.c;
       for (const [uu, vv] of [[u, 2 * sym.v0 - v], [2 * sym.u0 - u, v], [2 * sym.u0 - u, 2 * sym.v0 - v]]) hullPts.push([uu * sym.c - vv * sym.sn, uu * sym.sn + vv * sym.c]);
@@ -1522,6 +1620,11 @@ function finish(opts) {
     }
     inside[k * nx + i] = inn ? 1 : 0;
   }
+  const beyond = new Uint8Array(n);
+  if (walls) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const j = k * nx + i;
+    if (wallOf(X0 + i * s, Z0 + k * s)) { beyond[j] = 1; inside[j] = 0; }
+  }
 
   /* pile candidates */
   const pileObs = new Uint8Array(n);
@@ -1531,7 +1634,7 @@ function finish(opts) {
   // Unseen cells that connect to open ground are only accepted close to the toe.
   const rc = Math.max(2, Math.round(0.3 / s));
   const barrier = new Uint8Array(n);
-  for (let j = 0; j < n; j++) barrier[j] = dist[j] <= rc ? 1 : 0;
+  for (let j = 0; j < n; j++) barrier[j] = (dist[j] <= rc || beyond[j]) ? 1 : 0;
   const ext = new Uint8Array(n), eq = new Int32Array(n);
   let eh = 0, et = 0;
   for (let j = 0; j < n; j++) {
@@ -1549,15 +1652,15 @@ function finish(opts) {
   // with a partial walk the unseen middle of each end can leave a gap; anything
   // inside the outline of the measured + mirrored pile belongs to the pile
   let inPH = null;
-  if (sym) {
+  if (sym || walls) {
     const pp = [];
-    for (let j = 0; j < n; j++) if (pileObs[j] && (j % 2 === 0)) pp.push([X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s]);
+    for (let j = 0; j < n; j++) if (pileObs[j] && (j % 2 === 0)) toWalls(X0 + (j % nx) * s, Z0 + ((j / nx) | 0) * s, pp);
     const ph = convexHull(pp), m = ph.length;
     inPH = new Uint8Array(n);
     if (m >= 3) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
       const x = X0 + i * s, z = Z0 + k * s; let inn = true;
       for (let e = 0; e < m && inn; e++) { const a = ph[e], b = ph[(e + 1) % m]; if ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]) < -1e-9) inn = false; }
-      inPH[k * nx + i] = inn ? 1 : 0;
+      inPH[k * nx + i] = (inn && !beyond[k * nx + i]) ? 1 : 0;
     }
   }
   const cand = new Uint8Array(n);
@@ -1704,7 +1807,18 @@ function finish(opts) {
   let topH = null, domeRise = 0, nCap = 0;
   if (U.length) {
     biharmonicFill(U, Zs, known, region, nx, nz);
-    if (flatTop || Hcap !== null) {
+    if (walls) {
+      // against walls: the hidden part rests on the walls (up to the wall
+      // height) and rises from there at the slope measured on the free sides
+      const outH = new Float32Array(n);
+      for (let j = 0; j < n; j++) outH[j] = beyond[j] ? hw : 0;
+      const env = reposeEnvelope(Zs, known, region, nx, nz, s, tanA, outH);
+      for (const u of U) Zs[u] = env[u];
+      if (flatTop || Hcap !== null) {
+        topH = Hcap !== null ? Math.max(Hcap, topDense) : topKnown;
+        for (const u of U) if (Zs[u] >= topH) { Zs[u] = topH; nCap++; }
+      }
+    } else if (flatTop || Hcap !== null) {
       topH = Hcap !== null ? Math.max(Hcap, topDense) : topKnown;
       const env = reposeEnvelope(Zs, known, region, nx, nz, s, tanA);
       for (const u of U) if (env[u] > Zs[u]) Zs[u] = env[u];
@@ -1786,8 +1900,9 @@ function finish(opts) {
 
   const pct = (x) => Math.round(V > 0 ? x / V * 100 : 0);
   if (!partial && progress < 0.95) warnings.push('The loop around the pile was not closed (' + Math.round(progress * 100) + '% of the way round). The unseen side was filled in by estimation. For piles you cannot walk round, choose "Only 1–2 sides".');
+  if (walls) notes.push('Against ' + (walls.list.length === 2 ? 'two walls' : 'a wall') + ': the hidden part of the pile was built out to the wall' + (walls.list.length === 2 ? 's' : '') + ' you marked, resting ' + hw.toFixed(1) + ' m up the wall' + (walls.list.length === 2 ? 's' : '') + ', with ' + (Math.atan(tanA) / DEG).toFixed(0) + '° slopes above (the slope measured on the free sides). ' + pct(Vfill) + '% of the volume was built this way.');
   if (sym) notes.push('Symmetric pile assumed: ' + pct(Vmir) + '% of the volume is a mirror image of the measured side(s); the centre line was found from ' + sym.method + '.');
-  const topFrom = topSource === 'entered' ? 'the pile height you entered' : (topSource === 'taps' ? 'your ' + taps.length + ' top-edge tap' + (taps.length > 1 ? 's' : '') + (taps.length > 1 ? ' (they agree within ±' + ((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2).toFixed(1) + ' m)' : '') : 'the highest measured height');
+  const topFrom = topSource === 'entered' ? 'the pile height you entered' : (topSource === 'taps' ? 'your ' + taps.length + ' top-edge tap' + (taps.length > 1 ? 's' : '') + (taps.length > 1 ? ' (they agree within ±' + (((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2) < 0.1 ? 'less than 0.1' : ((Math.max(...taps.map(t => t.H)) - Math.min(...taps.map(t => t.H))) / 2).toFixed(1)) + ' m)' : '') : 'the highest measured height');
   if (topSource === 'measured' && flatTop && topReach > 8 && Vfill > 0.1 * V) warnings.push('The highest point measured is ' + topKnown.toFixed(1) + ' m, about ' + Math.round(topReach) + ' m from where you walked — near the phone\'s measuring range. If the pile is taller than ' + topKnown.toFixed(1) + ' m, the volume is too low: measure again tapping Top edge 2–3 times along the walk, or enter the pile height.');
   if (flatTop && Vfill > 0.02 * V) notes.push('Flat top assumed where the top could not be seen (' + pct(Vfill) + '% of the volume), at ' + (topH || maxH).toFixed(2) + ' m from ' + topFrom + '.' + (topSource === 'measured' ? ' If the pile is taller than that, tap Top edge during the walk or enter the pile height.' : ''));
   if (!flatTop && Hcap !== null && Vfill > 0.02 * V) notes.push('The unseen top was rebuilt up to ' + topH.toFixed(2) + ' m, from ' + topFrom + '.');
@@ -1822,7 +1937,7 @@ function finish(opts) {
     length: len, width: wid, coverage, mirrorShare, progress, walked, loopMismatch: loopMis,
     ground: { a: pl.a, b: pl.b, c: pl.c, rms: pl.rms, n: pl.nIn },
     ringMean, ringRms, camHeight: camH, nPoints: nPts, nDepthFrames, nDepthSamples, duration: nP ? camPath[(nP - 1) * 5 + 3] - camPath[3] : 0,
-    flipMode, flipLocked, flipStats, warnings, notes, zt, domeRise, topHeight: topH, topSource, topMeasured: topKnown, topReach, slopeDeg: Math.atan(tanA) / DEG, tapHeights: taps.map(t => t.H), nTaps: topRays.length, walk: partial ? 'partial' : 'full', top: flatTop ? 'flat' : 'peaked', incomplete: partial && !sym,
+    flipMode, flipLocked, flipStats, warnings, notes, zt, domeRise, topHeight: topH, topSource, topMeasured: topKnown, topReach, slopeDeg: Math.atan(tanA) / DEG, tapHeights: taps.map(t => t.H), nTaps: topRays.length, walk: partial ? 'partial' : 'full', top: flatTop ? 'flat' : 'peaked', incomplete: partial && !sym && !walls, far: wallMode ? 'wall' : 'mirror', wallHeight: wallMode ? hw : null, walls: walls ? walls.list.map(w => ({ axis: w.k, at: w.at, taps: w.n, spread: w.spread })) : null, nWallTaps: wallPts.length,
     sym: sym ? { method: sym.method, angleDeg: sym.th * 180 / Math.PI, u0: sym.u0, v0: sym.v0, umin: sym.umin, umax: sym.umax, nA: sym.nA, nB: sym.nB } : null, cellSize: s,
     parts: { scale: eScale, fill: eFill, mirror: eMirror, base: eBase, loop: eLoop },
     grid: { nx, nz, s, x0: X0, z0: Z0, Z: Zout, mask }, center: [mx, mz], points: P, path
@@ -1834,7 +1949,7 @@ function state() {
   return { started, flipMode, flipLocked, nPts, nTracks: tracks.length, nDepthFrames, frames: fr.R.length };
 }
 
-return { CFG, reset, processFrame, start, finish, state, topEdge, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
+return { CFG, reset, processFrame, start, finish, state, topEdge, wallTap, _test: { lk, makePyr, buildPyr, detect: () => null, has9, triCore, median, convexHull, fitGround, solve3 } };
 })();
 
 if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof importScripts === 'function') {
@@ -1845,6 +1960,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined' && typeof impor
       else if (m.type === 'frame') { const o = PSE.processFrame(m); self.postMessage(o.msg, o.transfer); }
       else if (m.type === 'start') { PSE.start(m.center, m.t); }
       else if (m.type === 'top') { PSE.topEdge(m.C, m.D); }
+      else if (m.type === 'wall') { PSE.wallTap(m.P, m.D); }
       else if (m.type === 'finish') { const o = PSE.finish(m.opts); self.postMessage(o.msg, o.transfer); }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err && err.stack || err) });
@@ -2074,7 +2190,15 @@ const SimWorld = {
   yardSpec(kind) {
     const tanA = Math.tan(35 * SIM_DEG);
     return { yard: { a: 15, b: 9, H: 3.6, peaked: false }, yardpk: { a: 14, b: 6, H: 6 * tanA, peaked: true },
-      yardbig: { a: 45, b: 15, H: 7, peaked: false }, tall: { a: 30, b: 25, H: 10, peaked: false } }[kind] || null;
+      yardbig: { a: 45, b: 15, H: 7, peaked: false }, tall: { a: 30, b: 25, H: 10, peaked: false },
+      corner: { a: 15, b: 9, H: 3.6, peaked: false, hw: 1.5 }, cornerpk: { a: 14, b: 6, H: 6 * tanA, peaked: true, hw: 1.5 } }[kind] || null;
+  },
+  /* piles in a walled corner: walls (hw high, 0.4 m thick) on the +x end and the
+     +z side, where the free-standing pile's slope is hw high; beyond them, ground */
+  walls(kind) {
+    const ys = SimWorld.yardSpec(kind); if (!ys || !ys.hw) return null;
+    const run = ys.hw / Math.tan(35 * SIM_DEG);
+    return { xw: ys.a - run, zw: ys.b - run, hw: ys.hw, t: 0.4 };
   },
   pile(kind) {
     const tanA = Math.tan(35 * SIM_DEG);
@@ -2088,7 +2212,15 @@ const SimWorld = {
         return Math.max(0, Math.min(H, h));
       };
     };
-    const ys = SimWorld.yardSpec(kind);
+    const ys = SimWorld.yardSpec(kind), wl = SimWorld.walls(kind);
+    if (ys && wl) {
+      const f = yard(ys.a, ys.b, ys.H, ys.peaked);
+      return (x, z) => {
+        if (x < wl.xw && z < wl.zw) return f(x, z);
+        if ((x >= wl.xw && x < wl.xw + wl.t && z < wl.zw + wl.t) || (z >= wl.zw && z < wl.zw + wl.t && x < wl.xw + wl.t)) return wl.hw;
+        return 0;
+      };
+    }
     if (ys) return yard(ys.a, ys.b, ys.H, ys.peaked);
     if (kind === 'ridge') return (x, z) => {
       const ax = Math.max(0, Math.abs(x) - 3.5), r = Math.hypot(ax, z);
@@ -2109,9 +2241,11 @@ const SimWorld = {
     if (kind === 'yardpk') return { a: 14, b: 6, L: 26, n: 331 };
     if (kind === 'yardbig') return { a: 45, b: 15, L: 64, n: 385 };
     if (kind === 'tall') return { a: 30, b: 25, L: 42, n: 301 };
+    if (kind === 'corner') return { a: 15, b: 9, L: 28, n: 351 };
+    if (kind === 'cornerpk') return { a: 14, b: 6, L: 26, n: 331 };
     return { a: 5.5, b: 5.5, L: 12, n: 241 };
   },
-  mesh(hf, D) {
+  mesh(hf, D, inPile) {
     const n = (D && D.n) || 241, L = (D && D.L) || 12, st = 2 * L / (n - 1);
     const pos = new Float32Array(n * n * 3), nrm = new Float32Array(n * n * 3), H = new Float32Array(n * n);
     for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) H[k * n + i] = hf(-L + i * st, -L + k * st);
@@ -2128,6 +2262,19 @@ const SimWorld = {
       const a = k * n + i, b = a + 1, c = a + n, d = c + 1;
       idx[q++] = a; idx[q++] = c; idx[q++] = d; idx[q++] = a; idx[q++] = d; idx[q++] = b;
       V += st * st / 6 * (H[a] + H[d] + H[c] + H[a] + H[d] + H[b]);
+    }
+    if (inPile) { // volume of the rendered surface on the pile side of the walls only
+      V = 0; const m = 4, ss = st / m;
+      for (let k = 0; k < n - 1; k++) for (let i = 0; i < n - 1; i++) {
+        const a = H[k * n + i], b = H[k * n + i + 1], c = H[(k + 1) * n + i], d = H[(k + 1) * n + i + 1];
+        for (let q = 0; q < m; q++) for (let r = 0; r < m; r++) {
+          const fx = (r + 0.5) / m, fz = (q + 0.5) / m, x = -L + (i + fx) * st, z = -L + (k + fz) * st;
+          if (!inPile(x, z)) continue;
+          // height on the same two triangles as the rendered mesh (a-d-b and a-c-d)
+          const h = fz <= fx ? a + (b - a) * fx + (d - b) * fz : a + (c - a) * fz + (d - c) * fx;
+          V += h * ss * ss;
+        }
+      }
     }
     return { pos, nrm, idx, truthVolume: V, hf, n, L, st, H };
   },
@@ -2209,7 +2356,8 @@ class SimSource {
     if (!gl) throw new Error('WebGL2 is not available for the demo.');
     this.gl = gl;
     this.dims = SimWorld.dims(this.o.kind);
-    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind), this.dims);
+    const wl = SimWorld.walls(this.o.kind);
+    this.world = SimWorld.mesh(SimWorld.pile(this.o.kind), this.dims, wl ? (x, z) => x < wl.xw && z < wl.zw : null);
     this.truthVolume = this.world.truthVolume;
     this.prog = GLU.program(gl, SIM_VS, SIM_FS);
     const mk = (data, target) => { const b = gl.createBuffer(); gl.bindBuffer(target || gl.ARRAY_BUFFER, b); gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
@@ -2239,6 +2387,9 @@ class SimSource {
       line(0, -b - d, a, -b - d); arc(a, -b, -Math.PI / 2, 0); line(a + d, -b, a + d, b); arc(a, b, 0, Math.PI / 2);
       line(a, b + d, -a, b + d); arc(-a, b, Math.PI / 2, Math.PI); line(-a - d, b, -a - d, -b); arc(-a, -b, Math.PI, 1.5 * Math.PI);
       line(-a, -b - d, 0.08 * a, -b - d);
+    } else if (p === 'Lw') { // L walk in a walled corner: from the end wall along the free side, round, along the free end to the side wall
+      const wl = SimWorld.walls(this.o.kind);
+      line(wl.xw - 0.6, -b - d, -a, -b - d); arc(-a, -b, -Math.PI / 2, -Math.PI); line(-a - d, -b, -a - d, wl.zw - 0.6);
     } else if (p === 'L') {
       line(a + 0.5 * d, -b - d, -a, -b - d); arc(-a, -b, -Math.PI / 2, -Math.PI); line(-a - d, -b, -a - d, b + 0.5 * d);
     } else { // 'side'
@@ -2305,6 +2456,16 @@ class SimSource {
     const e = (this.o.aimErrDeg === undefined ? 0.3 : this.o.aimErrDeg) * SIM_DEG;
     D = D.map(v => v / l + e * this.gauss()); l = Math.hypot(...D);
     return D.map(v => v / l);
+  }
+  /* a "Wall" tap: the point where the centre dot meets the nearest wall face
+     (a bare part next to the pile), with a few cm of depth noise */
+  wallPoint(tp) {
+    const wl = SimWorld.walls(this.o.kind); if (!wl) return null;
+    const C = tp.C, toEnd = Math.abs(C[0] - wl.xw), toSide = Math.abs(C[2] - wl.zw);
+    const P = toEnd < toSide ? [wl.xw, 0.8, C[2] + 1.5] : [C[0] + 1.5, 0.8, wl.zw];
+    for (let i = 0; i < 3; i += 2) P[i] += 0.03 * this.gauss();
+    const D = [P[0] - C[0], P[1] - C[1], P[2] - C[2]], l = Math.hypot(...D);
+    return { P, D: D.map(v => v / l) };
   }
   /* what ARCore would report: optional scale error, drift and yaw drift */
   reportedPose(tp, t) {
@@ -2424,6 +2585,7 @@ const Overlay = {
     this.setMain('START', false);
     $('ov-ref').textContent = 'Mark A'; $('ov-ref').classList.add('hidden');
     $('ov-topedge').textContent = 'Top edge'; $('ov-topedge').classList.add('hidden');
+    $('ov-wall').textContent = 'Wall'; $('ov-wall').classList.add('hidden');
     this.setMsg('Starting…', 'info', 0);
   },
   hide() { $('ov').classList.add('hidden'); },
@@ -2513,12 +2675,13 @@ class Capture {
       speed: 0, angSpeed: 0, lastC: null, lastT: null, lastF: null, closedNotified: false, stats: null, mini: null,
       path: [], lastPathT: -1, refA: null, refB: null, startC: null, groundYs: [], lowSince: null, trackingLost: false,
       lastGuide: -1, idleWaiters: [], resultWaiter: null, lastR: null, nearDist: null, finished: false, frames: 0,
-      partial: !!(meta && meta.walk === 'partial'), walked: 0, nTop: 0
+      partial: !!(meta && meta.walk === 'partial'), walls: !!(meta && meta.walk === 'partial' && meta.far === 'wall'), walked: 0, nTop: 0, nWall: 0
     });
     this.recorder = this.opts.record ? new Recorder() : null;
     Overlay.show(source.isSim);
     $('ov-ref').onclick = () => this.markRef();
     $('ov-topedge').onclick = () => this.markTop();
+    $('ov-wall').onclick = () => this.markWall();
     $('ov-main').onclick = () => { if (this.phase === 'warmup') this.startWalk(); else if (this.phase === 'walk') this.finish(); };
     $('ov-close').onclick = () => this.abort();
   }
@@ -2617,6 +2780,7 @@ class Capture {
     Overlay.setMain('FINISH', true);
     $('ov-ref').classList.remove('hidden');
     $('ov-topedge').classList.remove('hidden');
+    if (this.walls) $('ov-wall').classList.remove('hidden');
     if (navigator.vibrate) navigator.vibrate(40);
   }
   markRef() {
@@ -2638,6 +2802,21 @@ class Capture {
     if (!this.source.isTest) { Overlay.setMsg('Top edge marked (' + this.nTop + '). Mark it again from one or two other places along the pile', 'ok', 0); this.lastGuide = this.lastT + 2.5; }
     if (navigator.vibrate) navigator.vibrate(25);
   }
+  /* "Wall": the point on a wall where the centre dot hits it */
+  markWall(P, D) {
+    if (this.phase !== 'walk') return;
+    if (!P) {
+      const h = this.source.centerHit && this.source.centerHit();
+      if (!h || !h.p) { Overlay.setMsg('Aim the centre dot at the wall itself (a bare part next to the pile) and try again', 'warn', 0); this.lastGuide = this.lastT + 2.5; return; }
+      P = h.p; D = this.lastF;
+    }
+    this.worker.postMessage({ type: 'wall', P, D: D || null });
+    if (this.recorder) this.recorder.event('wall', { P, D, t: this.lastT });
+    this.nWall++;
+    $('ov-wall').textContent = 'Wall ✓ ' + this.nWall;
+    if (!this.source.isTest) { Overlay.setMsg('Wall marked (' + this.nWall + '). Mark each wall the pile leans on once', 'ok', 0); this.lastGuide = this.lastT + 2.5; }
+    if (navigator.vibrate) navigator.vibrate(25);
+  }
   guide(t) {
     let msg = '', kind = 'info', arrow = 0;
     const st = this.stats;
@@ -2653,7 +2832,9 @@ class Capture {
       else if (this.angSpeed > 75) { msg = 'Turn the phone more slowly'; kind = 'warn'; }
       else if (this.lowSince !== null && t - this.lowSince > 1.2) { msg = 'Not enough detail — keep the pile in view'; kind = 'warn'; }
       else if (this.nearDist !== null && this.nearDist < 1.3) { msg = 'Step back — keep the whole pile and some ground in view'; kind = 'warn'; }
-      else if (this.meta && this.meta.top === 'flat' && !this.meta.topHeight && this.nTop < 2 && t - this.startT > 6 && (t % 12) < 4) {
+      else if (this.walls && this.nWall < 2 && (t - this.startT < 5 || (t % 12) >= 8)) {
+        msg = 'At each wall the pile leans on, aim the centre dot at the bare wall next to the pile and tap Wall (' + this.nWall + ' marked)'; kind = 'go';
+      } else if (this.meta && this.meta.top === 'flat' && !this.meta.topHeight && this.nTop < 2 && t - this.startT > 6 && (t % 12) < 4) {
         msg = 'Aim the centre dot at the top edge of the pile and tap Top edge (' + this.nTop + ' of 2–3)'; kind = 'go';
       } else if (this.partial) {
         if (t - this.startT < 6) msg = 'Walk slowly along the sides you can reach — a long side and, if possible, one end';
@@ -2694,7 +2875,7 @@ class Capture {
     this.phase = 'finishing';
     Busy.show('Calculating volume…');
     const m = this.meta || {};
-    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress, walk: m.walk || 'full', top: m.top || 'peaked', baseWidth: m.baseWidth || 0, topHeight: m.topHeight || 0 } });
+    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress, walk: m.walk || 'full', top: m.top || 'peaked', baseWidth: m.baseWidth || 0, topHeight: m.topHeight || 0, far: m.far || 'mirror', wallHeight: m.wallHeight || 0 } });
     if (this.busy) this.waitIdle().then(send); else send();
     if (this.source.stop) this.source.stop();
   }
@@ -2737,6 +2918,8 @@ const SimRunner = {
   interactive(capture, sim) {
     sim.isSim = true; sim.running = true;
     let simT = 0, last = performance.now(), lastHit = -1;
+    // the demo taps Top edge and Wall by itself, as you would on site
+    const tapAt = [0.15, 0.35, 0.8].slice(0, sim.o.topTaps || 0), wallAt = sim.o.wallTaps ? [0.02, 0.97] : [];
     sim.centerHit = () => sim._tp ? sim.hitAt(sim._tp, 0.5, 0.5) : null;
     sim.stop = () => { sim.running = false; $('sim-stage').classList.add('hidden'); };
     const stage = $('sim-stage'); stage.classList.remove('hidden');
@@ -2755,6 +2938,8 @@ const SimRunner = {
       const ch = sim.hitAt(tp, 0.5, 0.5);
       const want = capture.frame({ t: simT, R: rp.R, C: rp.C, tracking: true, nearDist: ch ? ch.dist : null });
       if (capture.phase === 'warmup' && simT > 2.2) capture.startWalk();
+      if (capture.phase === 'walk' && tapAt.length && tp.prog >= tapAt[0]) { tapAt.shift(); const r = sim.topEdgeRay(tp); if (r) capture.markTop(rp.C, r); }
+      if (capture.phase === 'walk' && wallAt.length && tp.prog >= wallAt[0]) { wallAt.shift(); const w = sim.wallPoint(tp); if (w) capture.markWall(w.P, w.D); }
       if (want) {
         const gray = sim.grabGray(tp);
         const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
@@ -2775,6 +2960,7 @@ const SimRunner = {
     const fps = 15; let f = 0, lastHit = -1;
     const t0 = performance.now();
     const tapAt = [0.15, 0.35, 0.8, 0.5, 0.65].slice(0, sim.o.topTaps || 0).sort((a, b) => a - b);
+    const wallAt = sim.o.wallTaps ? [0.02, 0.97] : [];
     for (;;) {
       const t = f / fps; f++;
       const tp = sim.truePose(t); sim._tp = tp;
@@ -2783,6 +2969,7 @@ const SimRunner = {
       capture.busy = false;
       if (capture.phase === 'warmup' && t >= 2.0) capture.startWalk();
       if (capture.phase === 'walk' && tapAt.length && tp.prog >= tapAt[0]) { tapAt.shift(); const r = sim.topEdgeRay(tp); if (r) capture.markTop(rp.C, r); }
+      if (capture.phase === 'walk' && wallAt.length && tp.prog >= wallAt[0]) { wallAt.shift(); const w = sim.wallPoint(tp); if (w) capture.markWall(w.P, w.D); }
       const gray = sim.o.camera ? sim.grabGray(tp) : null;
       const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
       let hits = null;
@@ -3322,37 +3509,46 @@ const App = {
   },
   /* pile setup: walk (full/partial), top (peaked/flat), size (grid), base width */
   initSetup() {
-    this.setup = Object.assign({ walk: 'full', top: 'peaked', size: 'small' }, Store.get('setup', {}));
+    this.setup = Object.assign({ walk: 'full', top: 'peaked', size: 'small', far: 'mirror', wallh: '1.5' }, Store.get('setup', {}));
     delete this.setup.width; // base width and height belong to one pile: kept for this session only
     const bind = (id, key) => {
       $(id).querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => { this.setup[key] = b.dataset.v; this.renderSetup(); }));
     };
-    bind('opt-walk', 'walk'); bind('opt-top', 'top'); bind('opt-size', 'size');
+    bind('opt-walk', 'walk'); bind('opt-top', 'top'); bind('opt-size', 'size'); bind('opt-far', 'far');
+    $('in-wallh').value = this.setup.wallh || '1.5';
+    $('in-wallh').oninput = () => { this.setup.wallh = $('in-wallh').value; Store.set('setup', this.setup); };
     this.renderSetup();
   },
   renderSetup() {
     const S = this.setup;
-    for (const [id, key] of [['opt-walk', 'walk'], ['opt-top', 'top'], ['opt-size', 'size']])
+    for (const [id, key] of [['opt-walk', 'walk'], ['opt-top', 'top'], ['opt-size', 'size'], ['opt-far', 'far']])
       $(id).querySelectorAll('.seg').forEach(b => b.classList.toggle('on', b.dataset.v === S[key]));
     $('help-walk').textContent = S.walk === 'partial'
-      ? 'Walk the full length of one long side and one end if you can. The sides you can\'t reach are mirrored from the measured ones, so the pile is assumed symmetrical.'
+      ? 'Walk the full length of one long side, and one end if you can. Then choose below what is on the sides you can\'t reach.'
       : 'Walk one full loop around the pile, a few steps past where you started.';
     $('help-top').textContent = (S.top === 'flat'
       ? 'Where the top can\'t be seen (tall piles), it is taken as flat at the height of its edge.'
       : 'Where the top can\'t be seen, the slopes are continued into a rounded peak (cones, ridges).') +
       ' Piles over about 5 m high: tap Top edge during the walk, or enter the height below.';
-    $('row-width').classList.toggle('hidden', S.walk !== 'partial');
+    const walls = S.walk === 'partial' && S.far === 'wall';
+    $('row-far').classList.toggle('hidden', S.walk !== 'partial');
+    $('help-far').textContent = walls
+      ? 'The pile leans on walls on the sides you can\'t walk. Tap Wall at each wall during the walk; the hidden part is built out to the walls.'
+      : 'The sides you can\'t walk are taken as a mirror image of the walked ones (a free-standing pile).';
+    $('row-wallh').classList.toggle('hidden', !walls);
+    $('row-width').classList.toggle('hidden', S.walk !== 'partial' || walls);
     Store.set('setup', S);
   },
   setupText(m) {
-    return (m.walk === 'partial' ? 'partial walk (mirrored)' : 'full loop') + ' · ' + (m.top === 'flat' ? 'flat top' : 'rounded top');
+    return (m.walk === 'partial' ? (m.far === 'wall' ? 'partial walk (against walls)' : 'partial walk (mirrored)') : 'full loop') + ' · ' + (m.top === 'flat' ? 'flat top' : 'rounded top');
   },
   readForm() {
     const sel = $('in-mat'), d = parseFloat($('in-den').value);
     const material = sel.value === '__other' ? 'Custom' : sel.value;
     const S = this.setup || { walk: 'full', top: 'peaked', size: 'small' }, w = parseFloat($('in-width').value), ht = parseFloat($('in-height').value);
     const meta = { name: ($('in-name').value || this.defaultName()).trim(), material, density: d > 0 ? d : 1,
-      walk: S.walk, top: S.top, size: S.size, baseWidth: S.walk === 'partial' && w > 0 ? w : 0, topHeight: ht > 0 ? ht : 0 };
+      walk: S.walk, top: S.top, size: S.size, baseWidth: S.walk === 'partial' && S.far !== 'wall' && w > 0 ? w : 0, topHeight: ht > 0 ? ht : 0,
+      far: S.walk === 'partial' && S.far === 'wall' ? 'wall' : 'mirror', wallHeight: parseFloat(S.wallh) > 0 ? parseFloat(S.wallh) : 1.5 };
     Store.set('last', { material: sel.value, density: meta.density });
     return meta;
   },
@@ -3390,12 +3586,13 @@ const App = {
     const meta = this.readForm();
     // the demo follows the chosen setup: round heap, long flat-topped pile, or a pile walked on two sides
     let sc = { kind: 'demo', path: 'circle', name: 'Demo heap (simulated)' };
-    if (meta.walk === 'partial') sc = meta.top === 'flat' ? { kind: 'yard', path: 'L', name: 'Demo: flat-topped pile, 2 sides walked' } : { kind: 'yardpk', path: 'L', name: 'Demo: ridge pile, 2 sides walked' };
+    if (meta.walk === 'partial' && meta.far === 'wall') sc = meta.top === 'flat' ? { kind: 'corner', path: 'Lw', name: 'Demo: flat-topped pile in a walled corner', walls: true } : { kind: 'cornerpk', path: 'Lw', name: 'Demo: ridge pile in a walled corner', walls: true };
+    else if (meta.walk === 'partial') sc = meta.top === 'flat' ? { kind: 'yard', path: 'L', name: 'Demo: flat-topped pile, 2 sides walked' } : { kind: 'yardpk', path: 'L', name: 'Demo: ridge pile, 2 sides walked' };
     else if (meta.top === 'flat') sc = { kind: 'yard', path: 'rect', name: 'Demo: flat-topped pile, full loop' };
     meta.name = sc.name;
     if (sc.kind !== 'demo' && meta.size === 'small') meta.size = 'medium';
-    meta.baseWidth = 0; meta.topHeight = 0;
-    const sim = new SimSource({ kind: sc.kind, path: sc.path, speed: Store.get('speed', 2) });
+    meta.baseWidth = 0; meta.topHeight = 0; if (sc.walls) meta.wallHeight = 1.5;
+    const sim = new SimSource({ kind: sc.kind, path: sc.path, speed: Store.get('speed', 2), topTaps: meta.top === 'flat' ? 3 : 0, wallTaps: !!sc.walls });
     try { sim.init($('sim-canvas')); } catch (e) { this.toast(e.message, 'bad'); return; }
     const cap = new Capture(this.hooks());
     const szd = PILE_SIZES[meta.size] || PILE_SIZES.small;
@@ -3435,7 +3632,7 @@ const App = {
   renderResult() {
     const c = this.cur, r = c.r, N = this.numbers(), f = N.f;
     $('res-title').textContent = c.name;
-    $('res-sub').textContent = fmt.date(c.date) + ' · ' + c.material + ' · ' + this.setupText({ walk: r.walk, top: r.top }) + (c.extra && c.extra.source === 'demo' ? ' · demo' : '');
+    $('res-sub').textContent = fmt.date(c.date) + ' · ' + c.material + ' · ' + this.setupText({ walk: r.walk, top: r.top, far: r.far }) + (c.extra && c.extra.source === 'demo' ? ' · demo' : '');
     $('res-vol').textContent = fmt.big(N.V);
     $('res-vol-range').textContent = 'likely ' + fmt.big(N.lo) + '–' + fmt.big(N.hi) + ' m³ (±' + N.pm.toFixed(0) + '%)';
     $('res-ton').textContent = fmt.big(N.T);
@@ -3466,7 +3663,7 @@ const App = {
     const W = $('res-warn'); W.innerHTML = '';
     for (const w of (r.notes || [])) { const li = document.createElement('li'); li.className = 'note'; li.textContent = w; W.appendChild(li); }
     for (const w of r.warnings) { const li = document.createElement('li'); li.textContent = w; W.appendChild(li); }
-    if (!r.warnings.length) { const li = document.createElement('li'); li.className = 'ok'; li.textContent = 'No problems detected: the loop was closed, the surface was well covered and the ground level is consistent.'; W.appendChild(li); }
+    if (!r.warnings.length) { const li = document.createElement('li'); li.className = 'ok'; li.textContent = (r.walk === 'partial' ? 'No problems detected: the walked sides were well covered and the ground level is consistent.' : 'No problems detected: the loop was closed, the surface was well covered and the ground level is consistent.'); W.appendChild(li); }
     if (!c.tape && c.tapeAR === null && N.pm > 4) {
       const li = document.createElement('li'); li.className = 'tip'; li.textContent = 'Tip: most of the ± range is the phone\'s own sense of distance. Mark two taped points (Mark A / Mark B) during the walk to shrink it to about ±2–3%.'; W.appendChild(li);
     }
@@ -3525,7 +3722,7 @@ const App = {
     return {
       id: c.id, name: c.name, material: c.material, density: c.density, date: c.date, volume: N.V, lo: N.lo, hi: N.hi, tonnes: N.T,
       footprint: c.r.footprint * N.f * N.f, peak: c.r.maxHeight * N.f, coverage: c.r.coverage, source: c.extra && c.extra.source,
-      tape: c.tape, scale: c.scale, warnings: c.r.warnings.length, walk: c.r.walk, top: c.r.top
+      tape: c.tape, scale: c.scale, warnings: c.r.warnings.length, walk: c.r.walk === 'partial' && c.r.far === 'wall' ? 'partial-walls' : c.r.walk, top: c.r.top
     };
   },
   async save() {
@@ -3575,7 +3772,7 @@ const App = {
       footprint_m2: +(r.footprint * N.f * N.f).toFixed(3), peak_height_m: +(r.maxHeight * N.f).toFixed(3),
       length_m: +(r.length * N.f).toFixed(2), width_m: +(r.width * N.f).toFixed(2), surface_seen: +r.coverage.toFixed(3),
       loop_progress: +r.progress.toFixed(3), walk: r.walk, top_assumption: r.top, mirrored_volume_m3: +((r.mirroredVolume || 0) * N.f ** 3).toFixed(3),
-      filled_volume_m3: +(r.filledVolume * N.f ** 3).toFixed(3), symmetry: r.sym,
+      filled_volume_m3: +(r.filledVolume * N.f ** 3).toFixed(3), symmetry: r.sym, unwalked_sides: r.far || null, wall_height_m: r.wallHeight || null, walls: r.walls || null,
       top: { height_m: r.topHeight != null ? +(r.topHeight * N.f).toFixed(2) : null, from: r.topSource || 'measured', highest_measured_m: r.topMeasured != null ? +(r.topMeasured * N.f).toFixed(2) : null, top_edge_taps_m: (r.tapHeights || []).map(h => +(h * N.f).toFixed(2)), slope_deg: r.slopeDeg != null ? +r.slopeDeg.toFixed(1) : null }, tape_check: c.tape ? { ar_distance_m: c.tapeAR, tape_distance_m: c.tape, scale_factor: c.scale } : null,
       error_parts_m3: N.parts, warnings: r.warnings, notes: r.notes || [],
       height_grid: { note: 'heights above the base plane in metres, row-major (z rows, x columns); NaN = not measured; mask bit0 = pile, bit1 = seen (a measurement within 25 cm), bit2 = mirrored from the measured side', nx: r.grid.nx, nz: r.grid.nz, cell_m: r.grid.s, scale_applied: c.scale, Z_float32_base64: b64(r.grid.Z), mask_uint8_base64: b64(r.grid.mask) }

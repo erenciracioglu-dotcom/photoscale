@@ -7,12 +7,15 @@ import json, math, sys
 def yard_spec(kind):
     t = math.tan(math.radians(35))
     return {'yard': (15, 9, 3.6, False), 'yardpk': (14, 6, 6 * t, True),
-            'yardbig': (45, 15, 7, False), 'tall': (30, 25, 10, False)}[kind]
+            'yardbig': (45, 15, 7, False), 'tall': (30, 25, 10, False),
+            'corner': (15, 9, 3.6, False), 'cornerpk': (14, 6, 6 * t, True)}[kind]
 
 def truth_fn(kind):
     a, b, H, peaked = yard_spec(kind)
     t = math.tan(math.radians(35)); run = H / t; pa = a - run; pb = 0 if peaked else b - run
+    run_w = 1.5 / t; xw = a - run_w; zw = b - run_w; walled = kind.startswith('corner')
     def h(x, z):
+        if walled and (x >= xw or z >= zw): return 0.0   # the wall and beyond are not pile
         dx = max(0, abs(x) - pa); dz = max(0, abs(z) - pb)
         v = H - math.hypot(dx, dz) * t
         if 0 < v < H - 0.05: v += 0.05 * math.sin(0.9 * x + 0.3) * math.cos(1.1 * z) * min(1, v)

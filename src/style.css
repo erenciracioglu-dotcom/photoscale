@@ -155,3 +155,4 @@ details.card[open] summary::before{content:'▾ '}
 .lg.mir{background:linear-gradient(90deg,#8fa6d9,#a6e0ea,#b0e3b7,#f0deb0)}
 .lg.fill{background:#8a8f96}
 .lg.path{background:#ffcc1a;height:3px;border-radius:2px}
+.sub-opt{margin-top:14px}

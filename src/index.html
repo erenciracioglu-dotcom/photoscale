@@ -43,6 +43,12 @@
           <div class="opt-h">How can you walk?</div>
           <div class="segs" id="opt-walk"><button class="seg" data-v="full">All the way round</button><button class="seg" data-v="partial">Only 1–2 sides</button></div>
           <p class="opt-help" id="help-walk"></p>
+          <div class="hidden sub-opt" id="row-far">
+            <div class="opt-h">The sides you can't walk</div>
+            <div class="segs" id="opt-far"><button class="seg" data-v="mirror">Mirror image</button><button class="seg" data-v="wall">Against a wall</button></div>
+            <p class="opt-help" id="help-far"></p>
+          </div>
+          <label class="field hidden" id="row-wallh"><span>Wall height (m)</span><input id="in-wallh" type="number" inputmode="decimal" step="0.1" min="0.3" max="10" placeholder="1.5"></label>
           <label class="field hidden" id="row-width"><span>Base width (m) — needed only if you can walk one long side and no end</span><input id="in-width" type="number" inputmode="decimal" step="0.1" min="1" placeholder="optional"></label>
         </div>
         <div class="opt">
@@ -142,7 +148,7 @@
         <h3>Piles you can't walk round, tall piles, big piles</h3>
         <ul class="plain">
           <li><b>Only 1–2 sides reachable</b> (a pile against a shed wall or in a corner): choose <i>Only 1–2 sides</i>. Walk the full length of one long side and, if you can, one end. The sides you could not reach are filled in as a mirror image of the ones you measured, so this assumes the pile is symmetrical. Walking one end as well lets Photoscale find the pile's centre line from both of its toes. If you can only walk one long side, enter the pile's base width instead (from the stacker's settings or a tape) — otherwise the hidden half cannot be placed and only the measured half is counted.</li>
-          <li><b>If the pile touches the wall</b> rather than standing clear of it, the mirror image is not right — the part against the wall would be missed. Measure such piles with care and compare with known tonnages.</li>
+          <li><b>Piles against a wall</b> (for example in a corner of the shed): choose <i>Only 1–2 sides</i>, then <i>Against a wall</i>, and enter the wall height. Walk the free sides as above. At each wall the pile leans on, aim the centre dot at a bare part of the wall next to the pile and tap <b>Wall</b> once (the walk usually starts and ends right next to a wall). Photoscale then builds the hidden part out to the walls: resting on each wall up to its height, with slopes above at the angle measured on the free sides.</li>
           <li><b>Tall piles with a flat top</b> you cannot see from the ground: choose <i>Flat</i>. The hidden top is taken as flat. With <i>Rounded / peaked</i>, the slopes are continued into a rounded peak instead, which suits cones and ridges but would overestimate a flat-topped pile.</li>
           <li><b>Piles taller than about 5 m.</b> The phone measures the surface only up to roughly 8–10 m away, so on a tall pile it may not reach the top edge. Stop two or three times along the pile, aim the centre dot at the pile's top edge against the sky (or the ridge, for a peaked pile) and tap <b>Top edge</b>. Photoscale continues the measured slope upwards until it meets that sight line, which gives the height. Tap from a side you are walking along, with the lower slope in view. If you know the height (from the stacker or a laser meter), you can enter it instead under <i>Pile height</i>.</li>
           <li><b>Long stockyard piles</b> (say 200 × 50 m): choose <i>80–300 m</i>. Walking all the way round takes long and lets tracking drift; walking one long side plus one end with <i>Only 1–2 sides</i> halves the walk. Use a long tape check (markers 30–50 m apart) on big piles.</li>
@@ -197,6 +203,7 @@
   <div class="ov-bottom">
     <div class="ov-ringwrap"><canvas id="ov-ring" width="240" height="240"></canvas><div id="ov-pct" class="ov-pct">0%</div></div>
     <div class="ov-btns">
+      <button id="ov-wall" class="ov-small hidden">Wall</button>
       <button id="ov-topedge" class="ov-small hidden">Top edge</button>
       <button id="ov-ref" class="ov-small hidden">Mark A</button>
       <button id="ov-main" class="ov-main" disabled>START</button>

@@ -15,6 +15,7 @@ const Overlay = {
     this.setMain('START', false);
     $('ov-ref').textContent = 'Mark A'; $('ov-ref').classList.add('hidden');
     $('ov-topedge').textContent = 'Top edge'; $('ov-topedge').classList.add('hidden');
+    $('ov-wall').textContent = 'Wall'; $('ov-wall').classList.add('hidden');
     this.setMsg('Starting…', 'info', 0);
   },
   hide() { $('ov').classList.add('hidden'); },
@@ -104,12 +105,13 @@ class Capture {
       speed: 0, angSpeed: 0, lastC: null, lastT: null, lastF: null, closedNotified: false, stats: null, mini: null,
       path: [], lastPathT: -1, refA: null, refB: null, startC: null, groundYs: [], lowSince: null, trackingLost: false,
       lastGuide: -1, idleWaiters: [], resultWaiter: null, lastR: null, nearDist: null, finished: false, frames: 0,
-      partial: !!(meta && meta.walk === 'partial'), walked: 0, nTop: 0
+      partial: !!(meta && meta.walk === 'partial'), walls: !!(meta && meta.walk === 'partial' && meta.far === 'wall'), walked: 0, nTop: 0, nWall: 0
     });
     this.recorder = this.opts.record ? new Recorder() : null;
     Overlay.show(source.isSim);
     $('ov-ref').onclick = () => this.markRef();
     $('ov-topedge').onclick = () => this.markTop();
+    $('ov-wall').onclick = () => this.markWall();
     $('ov-main').onclick = () => { if (this.phase === 'warmup') this.startWalk(); else if (this.phase === 'walk') this.finish(); };
     $('ov-close').onclick = () => this.abort();
   }
@@ -208,6 +210,7 @@ class Capture {
     Overlay.setMain('FINISH', true);
     $('ov-ref').classList.remove('hidden');
     $('ov-topedge').classList.remove('hidden');
+    if (this.walls) $('ov-wall').classList.remove('hidden');
     if (navigator.vibrate) navigator.vibrate(40);
   }
   markRef() {
@@ -229,6 +232,21 @@ class Capture {
     if (!this.source.isTest) { Overlay.setMsg('Top edge marked (' + this.nTop + '). Mark it again from one or two other places along the pile', 'ok', 0); this.lastGuide = this.lastT + 2.5; }
     if (navigator.vibrate) navigator.vibrate(25);
   }
+  /* "Wall": the point on a wall where the centre dot hits it */
+  markWall(P, D) {
+    if (this.phase !== 'walk') return;
+    if (!P) {
+      const h = this.source.centerHit && this.source.centerHit();
+      if (!h || !h.p) { Overlay.setMsg('Aim the centre dot at the wall itself (a bare part next to the pile) and try again', 'warn', 0); this.lastGuide = this.lastT + 2.5; return; }
+      P = h.p; D = this.lastF;
+    }
+    this.worker.postMessage({ type: 'wall', P, D: D || null });
+    if (this.recorder) this.recorder.event('wall', { P, D, t: this.lastT });
+    this.nWall++;
+    $('ov-wall').textContent = 'Wall ✓ ' + this.nWall;
+    if (!this.source.isTest) { Overlay.setMsg('Wall marked (' + this.nWall + '). Mark each wall the pile leans on once', 'ok', 0); this.lastGuide = this.lastT + 2.5; }
+    if (navigator.vibrate) navigator.vibrate(25);
+  }
   guide(t) {
     let msg = '', kind = 'info', arrow = 0;
     const st = this.stats;
@@ -244,7 +262,9 @@ class Capture {
       else if (this.angSpeed > 75) { msg = 'Turn the phone more slowly'; kind = 'warn'; }
       else if (this.lowSince !== null && t - this.lowSince > 1.2) { msg = 'Not enough detail — keep the pile in view'; kind = 'warn'; }
       else if (this.nearDist !== null && this.nearDist < 1.3) { msg = 'Step back — keep the whole pile and some ground in view'; kind = 'warn'; }
-      else if (this.meta && this.meta.top === 'flat' && !this.meta.topHeight && this.nTop < 2 && t - this.startT > 6 && (t % 12) < 4) {
+      else if (this.walls && this.nWall < 2 && (t - this.startT < 5 || (t % 12) >= 8)) {
+        msg = 'At each wall the pile leans on, aim the centre dot at the bare wall next to the pile and tap Wall (' + this.nWall + ' marked)'; kind = 'go';
+      } else if (this.meta && this.meta.top === 'flat' && !this.meta.topHeight && this.nTop < 2 && t - this.startT > 6 && (t % 12) < 4) {
         msg = 'Aim the centre dot at the top edge of the pile and tap Top edge (' + this.nTop + ' of 2–3)'; kind = 'go';
       } else if (this.partial) {
         if (t - this.startT < 6) msg = 'Walk slowly along the sides you can reach — a long side and, if possible, one end';
@@ -285,7 +305,7 @@ class Capture {
     this.phase = 'finishing';
     Busy.show('Calculating volume…');
     const m = this.meta || {};
-    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress, walk: m.walk || 'full', top: m.top || 'peaked', baseWidth: m.baseWidth || 0, topHeight: m.topHeight || 0 } });
+    const send = () => this.worker.postMessage({ type: 'finish', opts: { progress: this.progress, walk: m.walk || 'full', top: m.top || 'peaked', baseWidth: m.baseWidth || 0, topHeight: m.topHeight || 0, far: m.far || 'mirror', wallHeight: m.wallHeight || 0 } });
     if (this.busy) this.waitIdle().then(send); else send();
     if (this.source.stop) this.source.stop();
   }
@@ -328,6 +348,8 @@ const SimRunner = {
   interactive(capture, sim) {
     sim.isSim = true; sim.running = true;
     let simT = 0, last = performance.now(), lastHit = -1;
+    // the demo taps Top edge and Wall by itself, as you would on site
+    const tapAt = [0.15, 0.35, 0.8].slice(0, sim.o.topTaps || 0), wallAt = sim.o.wallTaps ? [0.02, 0.97] : [];
     sim.centerHit = () => sim._tp ? sim.hitAt(sim._tp, 0.5, 0.5) : null;
     sim.stop = () => { sim.running = false; $('sim-stage').classList.add('hidden'); };
     const stage = $('sim-stage'); stage.classList.remove('hidden');
@@ -346,6 +368,8 @@ const SimRunner = {
       const ch = sim.hitAt(tp, 0.5, 0.5);
       const want = capture.frame({ t: simT, R: rp.R, C: rp.C, tracking: true, nearDist: ch ? ch.dist : null });
       if (capture.phase === 'warmup' && simT > 2.2) capture.startWalk();
+      if (capture.phase === 'walk' && tapAt.length && tp.prog >= tapAt[0]) { tapAt.shift(); const r = sim.topEdgeRay(tp); if (r) capture.markTop(rp.C, r); }
+      if (capture.phase === 'walk' && wallAt.length && tp.prog >= wallAt[0]) { wallAt.shift(); const w = sim.wallPoint(tp); if (w) capture.markWall(w.P, w.D); }
       if (want) {
         const gray = sim.grabGray(tp);
         const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
@@ -366,6 +390,7 @@ const SimRunner = {
     const fps = 15; let f = 0, lastHit = -1;
     const t0 = performance.now();
     const tapAt = [0.15, 0.35, 0.8, 0.5, 0.65].slice(0, sim.o.topTaps || 0).sort((a, b) => a - b);
+    const wallAt = sim.o.wallTaps ? [0.02, 0.97] : [];
     for (;;) {
       const t = f / fps; f++;
       const tp = sim.truePose(t); sim._tp = tp;
@@ -374,6 +399,7 @@ const SimRunner = {
       capture.busy = false;
       if (capture.phase === 'warmup' && t >= 2.0) capture.startWalk();
       if (capture.phase === 'walk' && tapAt.length && tp.prog >= tapAt[0]) { tapAt.shift(); const r = sim.topEdgeRay(tp); if (r) capture.markTop(rp.C, r); }
+      if (capture.phase === 'walk' && wallAt.length && tp.prog >= wallAt[0]) { wallAt.shift(); const w = sim.wallPoint(tp); if (w) capture.markWall(w.P, w.D); }
       const gray = sim.o.camera ? sim.grabGray(tp) : null;
       const depth = capture.phase === 'walk' && sim.o.depth ? sim.grabDepth(tp) : null;
       let hits = null;
